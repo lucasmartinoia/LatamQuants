@@ -9,3 +9,5 @@ fastapi
 arctic
 pymongo
 ```
+### How to execute my FastAPI project?
+\<my project folder where main is\>uvicorn main:app
