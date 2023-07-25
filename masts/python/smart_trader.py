@@ -3,7 +3,7 @@ from random import random
 from datetime import datetime, timedelta
 from api.dwx_client import dwx_client
 from indicators.macd_platinum_v2 import macd_platinum_v2
-from python.common.conversions import convert_historic_bars_element_to_array
+from python.common.conversions import convert_historic_bars_element_to_array, convert_periods_to_datetime_range
 from python.common.logging_config import setup_logging, logger
 from backtesting.backtesting import backtesting
 
@@ -61,6 +61,7 @@ class tick_processor():
 
         # my own flags
         self.stop_trading = False
+        self.minute_counter = 0
 
         # set mode
         if self.mode == "live":
@@ -78,7 +79,7 @@ class tick_processor():
 
         logger.info(f"Account info: {self.dma.account_info}")
         self.request_suscribtions()
-        #self.request_historic_data()
+        # self.request_historic_data()
         self.dma.start()
 
     def request_suscribtions(self):
@@ -87,13 +88,15 @@ class tick_processor():
         # subscribe to bar data:
         self.dma.subscribe_symbols_bar_data([['EURUSD', 'M1']])
 
-    def request_historic_data(self):
-        # request historic data:
-        #end = datetime.utcnow()
-        #start = end - timedelta(days=40)  # 40d = 240h
-        start = datetime.strptime("2022-05-05 00:00:00", "%Y-%m-%d %H:%M:%S")
-        end = datetime.strptime("2022-05-10 00:00:00", "%Y-%m-%d %H:%M:%S")
-        self.dma.get_historic_data('EURUSD', 'H4', start, end)
+    def get_historic_bars(self, symbol, timeframe, periods):
+        if self.mode == "live":
+            start_datetime, end_datetime = convert_periods_to_datetime_range(periods, timeframe,
+                                                                             datetime.utcnow().timestamp())
+        else:  # backtest
+            start_datetime, end_datetime = convert_periods_to_datetime_range(periods, timeframe,
+                                                                             self.dma.GetCurrentTime(symbol))
+
+        self.dma.get_historic_data(symbol, timeframe, start_datetime, end_datetime)
 
     def validate_parameters(self, mode,
                             back_test_start,
@@ -118,7 +121,7 @@ class tick_processor():
 
     def on_tick(self, symbol, bid, ask):
         now = datetime.utcnow()
-        #logger.debug(f'on_tick: {symbol} {bid} {ask}')
+        # logger.debug(f'on_tick: {symbol} {bid} {ask}')
 
         # to test trading. 
         # this will randomly try to open and close orders every few seconds. 
@@ -149,16 +152,27 @@ class tick_processor():
         #         # self.dwx.close_orders_by_magic(0)
 
     def on_bar_data(self, symbol, time_frame, time, open_price, high, low, close_price, tick_volume):
-        logger.debug(f'on_bar_data: {symbol} {time_frame} {time} tick_datetime {self.dma.GetCurrentTime(symbol)}{open_price} {high} {low} {close_price} {tick_volume}')
+        logger.debug(f'on_bar_data: {symbol} {time_frame} {time} {open_price} {high} {low} {close_price} {tick_volume}')
+        self.minute_counter += 1
 
-        if not self.stop_trading:
-            self.dma.open_order(symbol='EURUSD', order_type='buylimit',
-                                price=1.108933, lots=0.1)
-            self.dma.open_order(symbol='EURUSD', order_type='buy', lots=0.2)
-            self.dma.open_order(symbol='EURUSD', order_type='sell', lots=0.3)
-            self.dma.open_order(symbol='EURUSD', order_type='selllimit',
-                                price=1.108933, lots=0.4)
-            self.stop_trading = True
+        if self.minute_counter == 1:
+            self.dma.open_order(symbol='EURUSD', order_type='buylimit', lots=0.2, price=1.11270)
+        elif self.minute_counter == 2:
+            ticket_no, order_data = self.dma.open_orders.popitem()
+            self.dma.modify_order(ticket_no, 0.01, 1.11260, 1.10000, 1.40000)
+        elif self.minute_counter == 3:
+            ticket_no, order_data = self.dma.open_orders.popitem()
+            self.dma.close_order(ticket_no)
+        elif self.minute_counter == 4:
+            self.dma.get_historic_trades(30)
+
+        # if not self.stop_trading:
+        #     self.dma.open_order(symbol='EURUSD', order_type='buylimit',
+        #                         price=1.108933, lots=0.1)
+        #     self.dma.open_order(symbol='EURUSD', order_type='sell', lots=0.3)
+        #     self.dma.open_order(symbol='EURUSD', order_type='selllimit',
+        #                         price=1.108933, lots=0.4)
+        #     self.stop_trading = True
 
     def on_historic_data(self, symbol, time_frame, data):
         logger.debug(f'historic_data: {symbol} {time_frame} {len(data)} bars')
@@ -172,6 +186,7 @@ class tick_processor():
 
     def on_historic_trades(self):
         logger.debug(f'historic_trades: {len(self.dma.historic_trades)}')
+        logger.debug(self.dma.historic_trades)
 
     def on_message(self, message):
         if message['type'] == 'ERROR':
@@ -182,13 +197,8 @@ class tick_processor():
     # triggers when an order is added or removed, not when only modified.
     def on_order_event(self):
         logger.debug(f'on_order_event. open_orders: {len(self.dma.open_orders)} open orders')
-        logger.debug()
+        logger.debug(self.dma.open_orders)
 
-
-""" =====================================================================================================
-    BACKTESTING - CLASS AND EVENTS
-    =====================================================================================================
-"""
 
 """ =====================================================================================================
     PROCESS EVENTS FOR DWX AND BACKTESTING
@@ -241,22 +251,22 @@ class smart_trader():
 setup_logging()
 logger.info('STARTED')
 
-# # # FXOpen Demo Account
-# MT4_files_dir = 'C:/Users/Usuario/AppData/Roaming/MetaQuotes/Terminal/30D279B64B1858168C932D8264853F2B/MQL4/Files'
-# logger.info('MT4_files_dir -> ' + MT4_files_dir)
-# processor = tick_processor('live',None,None,None,None,None,None,MT4_files_dir)
-# sleep_seconds = 1
+# # FXOpen Demo Account
+MT4_files_dir = 'C:/Users/Usuario/AppData/Roaming/MetaQuotes/Terminal/30D279B64B1858168C932D8264853F2B/MQL4/Files'
+logger.info('MT4_files_dir -> ' + MT4_files_dir)
+processor = tick_processor('live', None, None, None, None, None, None, MT4_files_dir)
+sleep_seconds = 1
 
 # Backtesting
-backtesting_data_directory = 'C:/QuantDataManager/export'
-logger.info('backtesting_data_directory -> ' + backtesting_data_directory)
-start = datetime.strptime("2022-05-05 00:00:00", "%Y-%m-%d %H:%M:%S")
-end = datetime.strptime("2022-06-01 00:00:00", "%Y-%m-%d %H:%M:%S")
-balance = 100000.0
-currency = 'USD'
-leverage = 33
-processor = tick_processor('backtest', start, end, backtesting_data_directory, balance, currency, leverage)
-sleep_seconds = 0
+# backtesting_data_directory = 'C:/QuantDataManager/export'
+# logger.info('backtesting_data_directory -> ' + backtesting_data_directory)
+# start = datetime.strptime("2022-05-05 00:00:00", "%Y-%m-%d %H:%M:%S")
+# end = datetime.strptime("2022-06-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+# balance = 100000.0
+# currency = 'USD'
+# leverage = 33
+# processor = tick_processor('backtest', start, end, backtesting_data_directory, balance, currency, leverage)
+# sleep_seconds = 0
 
 while processor.dma.ACTIVE:
     sleep(sleep_seconds)

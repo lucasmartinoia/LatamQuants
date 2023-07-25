@@ -6,11 +6,12 @@ from os.path import join, exists
 from traceback import print_exc
 from datetime import datetime, timedelta
 from python.common.logging_config import logger
-from python.common.conversions import convert_bar_dataframe_to_dict
+from python.common.conversions import convert_bar_dataframe_to_dict, get_timeframe_delta, get_bar_data_clean_date
 import pandas as pd
 from enum import Enum
 from collections import deque
 import bisect
+
 
 class OrderStatus(Enum):
     PENDING = 0
@@ -50,6 +51,8 @@ class backtesting():
         self.dict_bardata_index = {}
         self.dict_bardata_index_prev = {}
         self.dict_trades = {}
+        self.open_orders = {}
+        self.historic_trades = {}
         self.last_ticket_no = 0
         self.buy_order_types = ['buy', 'buystop', 'buylimit']
         self.sell_order_types = ['sell', 'sellstop', 'selllimit']
@@ -79,6 +82,7 @@ class backtesting():
 
     """START can be used to check if the client has been initialized.  
     """
+
     def start(self):
         self.START = True
         init = 1
@@ -98,7 +102,7 @@ class backtesting():
                         symbol_datetime = self.GetCurrentTime(symbol)
                         self.insert_moment_tick_in_list((symbol_datetime, symbol_index, symbol))
                     init = 0
-            else: # Increment indexes
+            else:  # Increment indexes
                 for symbol in self.dict_tickdata_index.keys():
                     symbol_index = self.dict_tickdata_index[symbol]
                     if symbol_index is not None and self.dict_tickdata[symbol].shape[0] > (symbol_index + 1):
@@ -114,11 +118,13 @@ class backtesting():
                     # 1. Update orders in the broker
                     self.update_orders(symbol)
                     # 2. Trigger tick data events
-                    self.event_handler.on_tick(symbol, self.dict_tickdata[symbol].iloc[symbol_index]['Bid'], self.dict_tickdata[symbol].iloc[symbol_index]['Ask'])
+                    self.event_handler.on_tick(symbol, self.dict_tickdata[symbol].iloc[symbol_index]['Bid'],
+                                               self.dict_tickdata[symbol].iloc[symbol_index]['Ask'])
                     # 3. Trigger bar data events
                     self.update_bar_datas(symbol)
             else:
                 self.START = False
+
     def extract_symbol_and_timeframe(self, input_string):
         parts = input_string.split('_')
         if len(parts) != 2:
@@ -131,41 +137,35 @@ class backtesting():
         for symbol_tf in self.dict_bardata.keys():
             symbol, timeframe = self.extract_symbol_and_timeframe(symbol_tf)
             if symbol == param_symbol:
-                prev_datetime = self.dict_tickdata[param_symbol].iloc[self.dict_tickdata_index_prev[param_symbol]]['DateTime']
-                curr_datetime = self.dict_tickdata[param_symbol].iloc[self.dict_tickdata_index[param_symbol]]['DateTime']
+                prev_datetime = self.dict_tickdata[param_symbol].iloc[self.dict_tickdata_index_prev[param_symbol]][
+                    'DateTime']
+                curr_datetime = self.dict_tickdata[param_symbol].iloc[self.dict_tickdata_index[param_symbol]][
+                    'DateTime']
 
                 if self.has_bar_data_changed(prev_datetime, curr_datetime, timeframe):
-                    bar_data_index = self.get_bar_data_index_for_date(self.dict_bardata[symbol_tf], curr_datetime, timeframe)
+                    bar_data_index = self.get_bar_data_index_for_date(self.dict_bardata[symbol_tf], curr_datetime,
+                                                                      timeframe)
                     if bar_data_index is not None and bar_data_index > self.dict_bardata_index[symbol_tf]:
                         self.dict_bardata_index[symbol_tf] = bar_data_index
                         bar_data = self.dict_bardata[symbol_tf].iloc[self.dict_bardata_index[symbol_tf]]
-                        self.event_handler.on_bar_data(symbol, timeframe, bar_data['DateTime'], bar_data['Open'], bar_data['High'], bar_data['Low'], bar_data['Close'], bar_data['Volume'])
+                        self.event_handler.on_bar_data(symbol, timeframe, bar_data['DateTime'], bar_data['Open'],
+                                                       bar_data['High'], bar_data['Low'], bar_data['Close'],
+                                                       bar_data['Volume'])
                     else:
                         self.dict_tickdata_index[symbol_tf] = None
 
     def has_bar_data_changed(self, previous_datetime, current_datetime, timeframe):
-        timeframe_intervals = {
-                                    'M1': timedelta(minutes=1),
-                                    'M5': timedelta(minutes=5),
-                                    'M15': timedelta(minutes=15),
-                                    'M30': timedelta(minutes=30),
-                                    'H1': timedelta(hours=1),
-                                    'H4': timedelta(hours=4),
-                                    'D1': timedelta(days=1)
-                                }
-
         if previous_datetime is None or current_datetime is None:
-            raise ValueError(f"Invalid previous_datetime {previous_datetime} and/or current_datetime {current_datetime}")
+            raise ValueError(
+                f"Invalid previous_datetime {previous_datetime} and/or current_datetime {current_datetime}")
 
-        if timeframe not in timeframe_intervals:
-            logger.error(f"has_bar_data_changed() error: invalid timeframe {timeframe}. Available timeframes: M1, M5, M15, M30, H1, H4, D1")
-            raise ValueError(f"has_bar_data_changed() error: invalid timeframe {timeframe}. Available timeframes: M1, M5, M15, M30, H1, H4, D1")
-
-        timeframe_interval = timeframe_intervals[timeframe]
         if current_datetime < previous_datetime:
-            logger.error(f"has_bar_data_changed() error: current_datetime {current_datetime} cannot be earlier than previous_datetime {previous_datetime}")
-            raise ValueError(f"has_bar_data_changed() error: current_datetime {current_datetime} cannot be earlier than previous_datetime {previous_datetime}")
+            logger.error(
+                f"has_bar_data_changed() error: current_datetime {current_datetime} cannot be earlier than previous_datetime {previous_datetime}")
+            raise ValueError(
+                f"has_bar_data_changed() error: current_datetime {current_datetime} cannot be earlier than previous_datetime {previous_datetime}")
 
+        timeframe_interval = get_timeframe_delta(timeframe)
         elapsed_time = current_datetime - previous_datetime
         # Check if the elapsed time is greater than or equal to the specified timeframe
         if elapsed_time >= timeframe_interval:
@@ -174,21 +174,24 @@ class backtesting():
             # Check if the current_datetime indicates a new day, hour, half, or quarter new windows
             if timeframe == 'D1' and current_datetime.date() != previous_datetime.date():
                 return True
-            elif timeframe in ['H4'] and current_datetime.hour != previous_datetime.hour and current_datetime.hour % 4 == 0:
+            elif timeframe in [
+                'H4'] and current_datetime.hour != previous_datetime.hour and current_datetime.hour % 4 == 0:
                 return True
             elif timeframe in ['H1'] and current_datetime.hour != previous_datetime.hour:
                 return True
-            elif timeframe in ['M30'] and current_datetime.minute != previous_datetime.minute and current_datetime.minute % 30 == 0:
+            elif timeframe in [
+                'M30'] and current_datetime.minute != previous_datetime.minute and current_datetime.minute % 30 == 0:
                 return True
-            elif timeframe in ['M15'] and current_datetime.minute != previous_datetime.minute and current_datetime.minute % 15 == 0:
+            elif timeframe in [
+                'M15'] and current_datetime.minute != previous_datetime.minute and current_datetime.minute % 15 == 0:
                 return True
-            elif timeframe in ['M5'] and current_datetime.minute != previous_datetime.minute and current_datetime.minute % 5 == 0:
+            elif timeframe in [
+                'M5'] and current_datetime.minute != previous_datetime.minute and current_datetime.minute % 5 == 0:
                 return True
             elif timeframe in ['M1'] and current_datetime.minute != previous_datetime.minute:
                 return True
             else:
                 return False
-
 
     def get_tick_data_index_for_date(self, df, date_time):
         filtered_rows = df[df["DateTime"] >= date_time]
@@ -196,17 +199,11 @@ class backtesting():
             return filtered_rows.index[0]
 
     def get_bar_data_index_for_date(self, dict, dt, timeframe):
-        freq = int(timeframe[1:])
-        if timeframe[0] == 'D':
-            clean_date = datetime(dt.year, dt.month, (dt.day - (dt.day % freq)))
-        elif timeframe[0] == 'H':
-            clean_date = datetime(dt.year, dt.month, dt.day, (dt.hour - (dt.hour % freq)))
-        elif timeframe[0] == 'M':
-            clean_date = datetime(dt.year, dt.month, dt.day, dt.hour, (dt.minute - (dt.minute % freq)))
-
+        clean_date = get_bar_data_clean_date(dt, timeframe)
         filtered_rows = dict[dict["DateTime"] == clean_date]
         if not filtered_rows.empty:
             return filtered_rows.index[0]
+
     def find_file(self, search_for, path):
         for root, dirs, files in os.walk(path):
             for file in files:
@@ -329,11 +326,10 @@ class backtesting():
         function will be triggered. 
     """
 
-    def get_historic_trades(self,
-                            lookback_days=30):
-
-        dummy = 1
-        # implements get_historic_trades
+    def get_historic_trades(self, lookback_days=30):
+        self.event_handler.on_historic_trades = [(ticket_no, trade_data) for ticket_no, trade_data in self.dict_trades.items() if
+                  (trade_data.get('status') == OrderStatus.CLOSED or trade_data.get('status') == OrderStatus.CANCELED)]
+        self.event_handler.on_historic_trades()
 
     """Sends an OPEN_ORDER command to open an order.
 
@@ -366,17 +362,17 @@ class backtesting():
                    expiration=0):
 
         result = False
-        new_order_data = {'ticket_no': 0, 'symbol': symbol, 'order_type': order_type,
+        new_order_data = {'ticket_no': 0, 'symbol': symbol, 'type': order_type,
                           'lots': lots,
-                          'price': price, 'stop_loss': stop_loss, 'take_profit': take_profit, 'magic': magic,
+                          'price': price, 'SL': stop_loss, 'TP': take_profit, 'magic': magic,
                           'comment': comment, 'expiration': expiration, 'open_time': self.GetCurrentTime(symbol),
                           'close_time': None, 'commission': 0.0, 'taxes': 0.0, 'swap': 0.0,
-                          'profit': 0.0, 'status': OrderStatus.PENDING, 'open_price': 0.0,
+                          'pnl': 0.0, 'status': OrderStatus.PENDING, 'open_price': 0.0,
                           'close_price': 0.0}
         if self.validate_order(new_order_data):
             self.last_ticket_no = self.last_ticket_no + 1
             self.dict_trades.setdefault(self.last_ticket_no, new_order_data)
-            self.execute_order(self.last_ticket_no, new_order_data)
+            self.execute_order(self.last_ticket_no, new_order_data, True)
             result = True
 
         return result
@@ -387,82 +383,110 @@ class backtesting():
         for ticket_no, trade_data in pending_orders:
             self.execute_order(ticket_no, trade_data)
 
-    def execute_order(self, ticket_no, trade_data):
-        order_type = trade_data.get('order_type')
+    def execute_order(self, ticket_no, trade_data, new=False):
+        order_type = trade_data.get('type')
         order_symbol = trade_data['symbol']
         tick_data = self.dict_tickdata[order_symbol].iloc[self.dict_tickdata_index[order_symbol]]
+        to_inform = new
         if order_type.endswith('limit') or order_type.endswith('stop'):
             # programmed order
             if order_type == 'buylimit':
                 if tick_data['Ask'] <= trade_data['price']:
                     trade_data['open_price'] = tick_data['Ask']
                     trade_data['open_time'] = tick_data['DateTime']
-                    trade_data['order_type'] = 'buy'
+                    trade_data['type'] = 'buy'
                     trade_data['status'] = OrderStatus.OPEN
+                    self.open_orders[ticket_no] = trade_data
+                    to_inform = True
             elif order_type == 'selllimit':
                 if tick_data['Bid'] >= trade_data['price']:
                     trade_data['open_price'] = tick_data['Bid']
                     trade_data['open_time'] = tick_data['DateTime']
-                    trade_data['order_type'] = 'sell'
+                    trade_data['type'] = 'sell'
                     trade_data['status'] = OrderStatus.OPEN
+                    self.open_orders[ticket_no] = trade_data
+                    to_inform = True
             elif order_type == 'buystop':
                 if tick_data['Ask'] >= trade_data['price']:
                     trade_data['open_price'] = tick_data['Ask']
                     trade_data['open_time'] = tick_data['DateTime']
-                    trade_data['order_type'] = 'buy'
+                    trade_data['type'] = 'buy'
                     trade_data['status'] = OrderStatus.OPEN
+                    self.open_orders[ticket_no] = trade_data
+                    to_inform = True
             elif order_type == 'sellstop':
                 if tick_data['Bid'] <= trade_data['price']:
                     trade_data['open_price'] = tick_data['Bid']
                     trade_data['open_time'] = tick_data['DateTime']
-                    trade_data['order_type'] = 'sell'
+                    trade_data['type'] = 'sell'
                     trade_data['status'] = OrderStatus.OPEN
+                    self.open_orders[ticket_no] = trade_data
+                    to_inform = True
         else:  # Market orders input just now
             if order_type == 'buy':
                 trade_data['open_price'] = tick_data['Ask']
                 trade_data['open_time'] = tick_data['DateTime']
-                trade_data['order_type'] = 'buy'
+                trade_data['type'] = 'buy'
                 trade_data['status'] = OrderStatus.OPEN
+                self.open_orders[ticket_no] = trade_data
+                to_inform = True
             elif order_type == 'sell':
                 trade_data['open_price'] = tick_data['Bid']
                 trade_data['open_time'] = tick_data['DateTime']
-                trade_data['order_type'] = 'sell'
+                trade_data['type'] = 'sell'
                 trade_data['status'] = OrderStatus.OPEN
+                self.open_orders[ticket_no] = trade_data
+                to_inform = True
+
+        if to_inform == True:
+            self.event_handler.on_message({'type': 'INFO',
+                                           'message': f'Successfully sent order {ticket_no}: {order_symbol}, {trade_data["type"]}, {trade_data["lots"]}, {trade_data["open_price"]}'})
+            self.event_handler.on_order_event()
 
     def update_orders(self, symbol):
         open_orders = [(ticket_no, trade_data) for ticket_no, trade_data in self.dict_trades.items() if
                        trade_data.get('symbol') == symbol and
                        trade_data.get('status') == OrderStatus.OPEN and
-                       (trade_data.get('stop_loss') > 0.0 or trade_data.get('take_profit') > 0.0)]
+                       (trade_data.get('SL') > 0.0 or trade_data.get('TP') > 0.0)]
         for ticket_no, trade_data in open_orders:
             self.execute_order(ticket_no, trade_data)
 
     def update_order(self, ticket_no, trade_data):
-        order_type = trade_data.get('order_type')
+        order_type = trade_data.get('type')
         order_symbol = trade_data.get('symbol')
         tick_data = self.dict_tickdata[order_symbol][self.dict_tickdata_index]
+        to_inform = False
         if order_type == 'buy':
-            if trade_data.get('stop_loss') > 0.0:
-                if tick_data['Bid'] <= trade_data.get('stop_loss'):
+            if trade_data.get('SL') > 0.0:
+                if tick_data['Bid'] <= trade_data.get('SL'):
                     trade_data['close_price'] = tick_data['Bid']
                     trade_data['close_time'] = tick_data['DateTime']
                     trade_data['status'] = OrderStatus.CLOSED
-            if trade_data.get('take_profit') > 0.0:
-                if tick_data['Bid'] >= trade_data.get('take_profit'):
+                    to_inform = True
+            if trade_data.get('TP') > 0.0:
+                if tick_data['Bid'] >= trade_data.get('TP'):
                     trade_data['close_price'] = tick_data['Bid']
                     trade_data['close_time'] = tick_data['DateTime']
                     trade_data['status'] = OrderStatus.CLOSED
+                    to_inform = True
         elif order_type == 'sell':
-            if trade_data.get('stop_loss') > 0.0:
-                if tick_data['Ask'] >= trade_data.get('stop_loss'):
+            if trade_data.get('SL') > 0.0:
+                if tick_data['Ask'] >= trade_data.get('SL'):
                     trade_data['close_price'] = tick_data['Ask']
                     trade_data['close_time'] = tick_data['DateTime']
                     trade_data['status'] = OrderStatus.CLOSED
-            if trade_data.get('take_profit') > 0.0:
-                if tick_data['Ask'] <= trade_data.get('take_profit'):
+                    to_inform = True
+            if trade_data.get('TP') > 0.0:
+                if tick_data['Ask'] <= trade_data.get('TP'):
                     trade_data['close_price'] = tick_data['Ask']
                     trade_data['close_time'] = tick_data['DateTime']
                     trade_data['status'] = OrderStatus.CLOSED
+                    to_inform = True
+        if to_inform == True:
+            self.open_orders.pop(ticket_no)
+            self.event_handler.on_message({'type': 'INFO',
+                                           'message': f'Successfully closed 1 orders with symbol {order_symbol}.'})
+            self.event_handler.on_order_event()
 
     """Sends a MODIFY_ORDER command to modify an order.
 
@@ -493,34 +517,34 @@ class backtesting():
         if order_status == OrderStatus.PENDING:
             trade_data['lots'] = lots
             trade_data['price'] = price
-            trade_data['stop_loss'] = stop_loss
-            trade_data['take_profit'] = take_profit
+            trade_data['SL'] = stop_loss
+            trade_data['TP'] = take_profit
             trade_data['expiration'] = expiration
             self.execute_order(ticket, trade_data)
         elif order_status == OrderStatus.OPEN:
-            trade_data['stop_loss'] = stop_loss
-            trade_data['take_profit'] = take_profit
+            trade_data['SL'] = stop_loss
+            trade_data['TP'] = take_profit
             trade_data['expiration'] = expiration
             self.update_order(ticket, trade_data)
 
     def validate_order(self, trade_data):
         result = False
-        if trade_data['order_type'] in self.buy_order_types:
-            if 0 < trade_data['take_profit'] <= trade_data['price']:
+        if trade_data['type'] in self.buy_order_types:
+            if 0 < trade_data['TP'] <= trade_data['price']:
                 logger.error(
-                    f"Error in trade {trade_data['ticket_no']} {trade_data['order_type']}: TP {trade_data['take_profit']} <= Price {trade_data['take_profit']}")
-            elif trade_data['stop_loss'] > 0 and trade_data['stop_loss'] >= trade_data['price']:
+                    f"Error in trade {trade_data['ticket_no']} {trade_data['type']}: TP {trade_data['TP']} <= Price {trade_data['TP']}")
+            elif trade_data['SL'] > 0 and trade_data['SL'] >= trade_data['price']:
                 logger.error(
-                    f"Error in trade {trade_data['ticket_no']} {trade_data['order_type']}: SL {trade_data['take_profit']} >= Price {trade_data['take_profit']}")
+                    f"Error in trade {trade_data['ticket_no']} {trade_data['type']}: SL {trade_data['TP']} >= Price {trade_data['TP']}")
             else:
                 result = True
-        if trade_data['order_type'] in self.sell_order_types:
-            if trade_data['take_profit'] > 0 and trade_data['take_profit'] >= trade_data['price']:
+        if trade_data['type'] in self.sell_order_types:
+            if trade_data['TP'] > 0 and trade_data['TP'] >= trade_data['price']:
                 logger.error(
-                    f"Error in trade {trade_data['ticket_no']} {trade_data['order_type']}: TP {trade_data['take_profit']} >= Price {trade_data['take_profit']}")
-            elif 0 < trade_data['stop_loss'] <= trade_data['price']:
+                    f"Error in trade {trade_data['ticket_no']} {trade_data['type']}: TP {trade_data['TP']} >= Price {trade_data['TP']}")
+            elif 0 < trade_data['SL'] <= trade_data['price']:
                 logger.error(
-                    f"Error in trade {trade_data['ticket_no']} {trade_data['order_type']}: SL {trade_data['take_profit']} <= Price {trade_data['take_profit']}")
+                    f"Error in trade {trade_data['ticket_no']} {trade_data['type']}: SL {trade_data['TP']} <= Price {trade_data['TP']}")
             else:
                 result = True
         return result
@@ -568,7 +592,7 @@ class backtesting():
                 self.dict_trades[ticket]['status'] = OrderStatus.CLOSED
                 self.dict_trades[ticket]['close_time'] = self.GetCurrentTime(symbol)
                 close_price = 0.0
-                if trade_data['order_type'] in self.buy_order_types:
+                if trade_data['type'] in self.buy_order_types:
                     close_price = self.dict_tickdata[symbol][self.dict_tickdata_index[symbol]]['Bid']
                 else:
                     close_price = self.dict_tickdata[symbol][self.dict_tickdata_index[symbol]]['Ask']
@@ -578,6 +602,13 @@ class backtesting():
             self.dict_trades[ticket]['status'] = OrderStatus.CANCELED
             self.dict_trades[ticket]['close_time'] = self.GetCurrentTime(symbol)
             result = True
+
+        if result:
+            self.event_handler.on_order_event({ticket: self.dict_trades[ticket]})
+            self.open_orders.pop(ticket)
+            self.event_handler.on_message({'type': 'INFO',
+                                           'message': f'Successfully closed 1 orders with symbol {symbol}.'})
+            self.event_handler.on_order_event()
 
         return result
 
