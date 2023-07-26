@@ -3,6 +3,7 @@ import pandas as pd
 from datetime import datetime, timedelta
 from python.common.logging_config import logger
 
+
 def convert_historic_bars_element_to_array(element_label, data):
     result_array = []
 
@@ -69,7 +70,9 @@ def get_timeframe_delta(timeframe):
             f"H1, H4, D1")
     return timeframe_intervals[timeframe]
 
+
 def get_bar_data_clean_date(dt, timeframe):
+    logger.info(f"get_bar_data_clean_date() -> {dt} {timeframe}")
     freq = int(timeframe[1:])
     if timeframe[0] == 'D':
         clean_date = datetime(dt.year, dt.month, (dt.day - (dt.day % freq)))
@@ -79,6 +82,7 @@ def get_bar_data_clean_date(dt, timeframe):
         clean_date = datetime(dt.year, dt.month, dt.day, dt.hour, (dt.minute - (dt.minute % freq)))
 
     return clean_date
+
 
 def convert_periods_to_datetime_range(periods, timeframe, end_datetime):
     # Check if there are Saturdays or Sundays between start and end datetimes
@@ -93,3 +97,11 @@ def convert_periods_to_datetime_range(periods, timeframe, end_datetime):
             start_datetime -= timedelta(days=1)
         current_date -= timedelta(days=1)
     return start_datetime, end_datetime
+
+
+def get_lasts_from_dictionary(dictionary, n):
+    if n >= len(dictionary):
+        return dictionary
+
+    keys = list(dictionary.keys())[-n:]
+    return {key: dictionary[key] for key in keys}

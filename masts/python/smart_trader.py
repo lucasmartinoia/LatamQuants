@@ -3,7 +3,7 @@ from random import random
 from datetime import datetime, timedelta
 from api.dwx_client import dwx_client
 from indicators.macd_platinum_v2 import macd_platinum_v2
-from python.common.conversions import convert_historic_bars_element_to_array, convert_periods_to_datetime_range
+from python.common.conversions import convert_historic_bars_element_to_array, convert_periods_to_datetime_range, get_lasts_from_dictionary
 from python.common.logging_config import setup_logging, logger
 from backtesting.backtesting import backtesting
 
@@ -59,9 +59,12 @@ class tick_processor():
         self.last_open_time = datetime.utcnow()
         self.last_modification_time = datetime.utcnow()
 
-        # my own flags
+        # private variables
         self.stop_trading = False
         self.minute_counter = 0
+        self.historic_request_last_symbol = None
+        self.historic_request_last_bars = None
+        self.historic_request_last_timeframe = None
 
         # set mode
         if self.mode == "live":
@@ -81,6 +84,7 @@ class tick_processor():
         self.request_suscribtions()
         # self.request_historic_data()
         self.dma.start()
+        self.get_historic_bars('EURUSD', 'M1', 20)
 
     def request_suscribtions(self):
         # subscribe to tick data:
@@ -91,12 +95,16 @@ class tick_processor():
     def get_historic_bars(self, symbol, timeframe, periods):
         if self.mode == "live":
             start_datetime, end_datetime = convert_periods_to_datetime_range(periods, timeframe,
-                                                                             datetime.utcnow().timestamp())
+                                                                             datetime.utcnow())
         else:  # backtest
             start_datetime, end_datetime = convert_periods_to_datetime_range(periods, timeframe,
                                                                              self.dma.GetCurrentTime(symbol))
 
-        self.dma.get_historic_data(symbol, timeframe, start_datetime, end_datetime)
+        self.historic_request_last_bars = periods
+        self.historic_request_last_symbol = symbol
+        self.historic_request_last_timeframe = timeframe
+        logger.debug(f'get_historic_bars() -> {symbol} {timeframe} {periods}')
+        self.dma.get_historic_data(symbol, timeframe, start_datetime.timestamp(), end_datetime.timestamp())
 
     def validate_parameters(self, mode,
                             back_test_start,
@@ -155,16 +163,16 @@ class tick_processor():
         logger.debug(f'on_bar_data: {symbol} {time_frame} {time} {open_price} {high} {low} {close_price} {tick_volume}')
         self.minute_counter += 1
 
-        if self.minute_counter == 1:
-            self.dma.open_order(symbol='EURUSD', order_type='buylimit', lots=0.2, price=1.11270)
-        elif self.minute_counter == 2:
-            ticket_no, order_data = self.dma.open_orders.popitem()
-            self.dma.modify_order(ticket_no, 0.01, 1.11260, 1.10000, 1.40000)
-        elif self.minute_counter == 3:
-            ticket_no, order_data = self.dma.open_orders.popitem()
-            self.dma.close_order(ticket_no)
-        elif self.minute_counter == 4:
-            self.dma.get_historic_trades(30)
+        # if self.minute_counter == 1:
+        #     self.dma.open_order(symbol='EURUSD', order_type='buylimit', lots=0.2, price=1.11270)
+        # elif self.minute_counter == 2:
+        #     ticket_no, order_data = self.dma.open_orders.popitem()
+        #     self.dma.modify_order(ticket_no, 0.01, 1.11260, 1.10000, 1.40000)
+        # elif self.minute_counter == 3:
+        #     ticket_no, order_data = self.dma.open_orders.popitem()
+        #     self.dma.close_order(ticket_no)
+        # elif self.minute_counter == 4:
+        #     self.dma.get_historic_trades(30)
 
         # if not self.stop_trading:
         #     self.dma.open_order(symbol='EURUSD', order_type='buylimit',
@@ -176,13 +184,24 @@ class tick_processor():
 
     def on_historic_data(self, symbol, time_frame, data):
         logger.debug(f'historic_data: {symbol} {time_frame} {len(data)} bars')
-        close_prices = convert_historic_bars_element_to_array('close', data)
-        volumes = convert_historic_bars_element_to_array('tick_volume', data)
-        self.macd_plat = macd_platinum_v2(close_prices, volumes)
-        blueMACD, orgMACD, hist = self.macd_plat.calculate_macd()
-        logger.debug(f'blueMACD: {blueMACD}')
-        logger.debug(f'orgMACD: {orgMACD}')
-        logger.debug(f'hist: {hist}')
+        if self.historic_request_last_symbol == symbol and self.historic_request_last_timeframe == time_frame:
+            data = get_lasts_from_dictionary(data, self.historic_request_last_bars)
+            logger.debug(f'historic_data bars cutted: {symbol} {time_frame} {len(data)} bars expected {self.historic_request_last_bars}')
+            current_datetime = None
+            if self.mode == 'live':
+                current_datetime = datetime.utcnow()
+            else:
+                current_datetime = self.dma.GetCurrentTime(symbol)
+            last_key, _ = data.popitem()
+            logger.debug(f"current datetime -> {current_datetime} last bar datetime -> {last_key}")
+
+        # close_prices = convert_historic_bars_element_to_array('close', data)
+        # volumes = convert_historic_bars_element_to_array('tick_volume', data)
+        # self.macd_plat = macd_platinum_v2(close_prices, volumes)
+        # blueMACD, orgMACD, hist = self.macd_plat.calculate_macd()
+        # logger.debug(f'blueMACD: {blueMACD}')
+        # logger.debug(f'orgMACD: {orgMACD}')
+        # logger.debug(f'hist: {hist}')
 
     def on_historic_trades(self):
         logger.debug(f'historic_trades: {len(self.dma.historic_trades)}')
