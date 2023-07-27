@@ -39,6 +39,7 @@ class tick_processor():
                  back_test_currency=None,
                  back_test_leverage=None,
                  MT4_directory_path=None,
+                 time_delta_hours=5,
                  sleep_delay=0.005,  # 5 ms for time.sleep()
                  max_retry_command_seconds=10,  # retry to send the command for 10 seconds if not successful.
                  verbose=True
@@ -54,6 +55,7 @@ class tick_processor():
         self.sleep_delay = sleep_delay
         self.max_retry_command_seconds = max_retry_command_seconds
         self.verbose = verbose
+        self.time_delta_hours = time_delta_hours
 
         # private info
         self.last_open_time = datetime.utcnow()
@@ -93,18 +95,21 @@ class tick_processor():
         self.dma.subscribe_symbols_bar_data([['EURUSD', 'M1']])
 
     def get_historic_bars(self, symbol, timeframe, periods):
-        if self.mode == "live":
-            start_datetime, end_datetime = convert_periods_to_datetime_range(periods, timeframe,
-                                                                             datetime.utcnow())
-        else:  # backtest
-            start_datetime, end_datetime = convert_periods_to_datetime_range(periods, timeframe,
-                                                                             self.dma.GetCurrentTime(symbol))
-
+        start_datetime, end_datetime = convert_periods_to_datetime_range(periods, timeframe,
+                                                                         self.get_current_datetime(symbol))
         self.historic_request_last_bars = periods
         self.historic_request_last_symbol = symbol
         self.historic_request_last_timeframe = timeframe
         logger.debug(f'get_historic_bars() -> {symbol} {timeframe} {periods}')
         self.dma.get_historic_data(symbol, timeframe, start_datetime.timestamp(), end_datetime.timestamp())
+
+    def get_current_datetime(self, symbol=None):
+        result = None
+        if self.mode == "live":
+            result = datetime.utcnow() + timedelta(hours=self.time_delta_hours)
+        else:
+            result = self.dma.GetCurrentTime(symbol)
+        return result
 
     def validate_parameters(self, mode,
                             back_test_start,
@@ -187,13 +192,10 @@ class tick_processor():
         if self.historic_request_last_symbol == symbol and self.historic_request_last_timeframe == time_frame:
             data = get_lasts_from_dictionary(data, self.historic_request_last_bars)
             logger.debug(f'historic_data bars cutted: {symbol} {time_frame} {len(data)} bars expected {self.historic_request_last_bars}')
-            current_datetime = None
-            if self.mode == 'live':
-                current_datetime = datetime.utcnow()
-            else:
-                current_datetime = self.dma.GetCurrentTime(symbol)
+            current_datetime = self.get_current_datetime((symbol))
             last_key, _ = data.popitem()
             logger.debug(f"current datetime -> {current_datetime} last bar datetime -> {last_key}")
+            logger.debug(f"data received -> {data}")
 
         # close_prices = convert_historic_bars_element_to_array('close', data)
         # volumes = convert_historic_bars_element_to_array('tick_volume', data)
@@ -273,7 +275,7 @@ logger.info('STARTED')
 # # FXOpen Demo Account
 MT4_files_dir = 'C:/Users/Usuario/AppData/Roaming/MetaQuotes/Terminal/30D279B64B1858168C932D8264853F2B/MQL4/Files'
 logger.info('MT4_files_dir -> ' + MT4_files_dir)
-processor = tick_processor('live', None, None, None, None, None, None, MT4_files_dir)
+processor = tick_processor('live', None, None, None, None, None, None, MT4_files_dir,5)
 sleep_seconds = 1
 
 # Backtesting
