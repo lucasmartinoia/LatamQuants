@@ -174,9 +174,10 @@ class tick_processor():
         logger.debug(f'on_bar_data: {symbol} {time_frame} {time} {open_price} {high} {low} {close_price} {tick_volume}')
         logger.debug(f'bar_data: {self.dma.bar_data}')
         logger.debug(f'market_data: {self.dma.market_data}')
-        self.get_historic_bars(symbol, "M1", 5)
-
         self.minute_counter += 1
+        if self.minute_counter == 1:
+            self.get_historic_bars(symbol, "M1", 200)
+
         # if self.minute_counter == 1:
         #     self.dma.open_order(symbol='EURUSD', order_type='buylimit', lots=0.2, price=1.11270)
         # elif self.minute_counter == 2:
