@@ -19,7 +19,7 @@ def convert_bar_dataframe_to_dict(df, start_datetime=None, end_datetime=None):
     if start_datetime is not None:
         df = df[df['DateTime'] >= start_datetime]
     if end_datetime is not None:
-        df = df[df['DateTime'] <= end_datetime]
+        df = df[df['DateTime'] < end_datetime]
 
     # Convert the DataFrame to dictionary with orient='records'
     data_dict = df.to_dict(orient='records')

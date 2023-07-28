@@ -303,15 +303,17 @@ class backtesting():
     def get_historic_data(self,
                           symbol='EURUSD',
                           time_frame='D1',
-                          start=(datetime.utcnow() - timedelta(days=30)).timestamp(),
-                          end=datetime.utcnow().timestamp()):
-
+                          param_start=(datetime.utcnow() - timedelta(days=30)).timestamp(),
+                          param_end=datetime.utcnow().timestamp()):
+        start = datetime.fromtimestamp(param_start)
+        end = datetime.fromtimestamp(param_end)
+        logger.debug(f"-> get_historic_data({symbol}, {time_frame}, {start}, {end})")
         symbol_tf = f"{symbol}_{time_frame}"
         if symbol_tf in self.dict_bardata:
             if self.check_data_dates(self.dict_bardata[symbol_tf], start, end):
-                logger.info(self.dict_bardata[symbol_tf])
+                #logger.info(self.dict_bardata[symbol_tf])
                 result = convert_bar_dataframe_to_dict(self.dict_bardata[symbol_tf], start, end)
-                logger.info(result)
+                logger.info(f"get_historic_data() -> {result}")
                 self.event_handler.on_historic_data(symbol, time_frame, result)
         else:
             logger.error(f"No historic data for {symbol} {time_frame}!")

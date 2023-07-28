@@ -105,6 +105,7 @@ class tick_processor():
         self.historic_request_last_symbol = symbol
         self.historic_request_last_timeframe = timeframe
         logger.debug(f'get_historic_bars() -> {symbol} {timeframe} {periods}')
+        logger.debug(f"call -> get_historic_data({symbol}, {timeframe}, {start_datetime}, {end_datetime})")
         self.dma.get_historic_data(symbol, timeframe, start_datetime.timestamp(), end_datetime.timestamp())
 
     def get_current_datetime(self, symbol=None):
@@ -173,6 +174,7 @@ class tick_processor():
         logger.debug(f'on_bar_data: {symbol} {time_frame} {time} {open_price} {high} {low} {close_price} {tick_volume}')
         logger.debug(f'bar_data: {self.dma.bar_data}')
         logger.debug(f'market_data: {self.dma.market_data}')
+        self.get_historic_bars(symbol, "M1", 5)
 
         self.minute_counter += 1
         # if self.minute_counter == 1:
@@ -200,7 +202,7 @@ class tick_processor():
             data = get_lasts_from_dictionary(data, self.historic_request_last_bars)
             logger.debug(f'historic_data bars cutted: {symbol} {time_frame} {len(data)} bars expected {self.historic_request_last_bars}')
             current_datetime = self.get_current_datetime(symbol)
-            last_key, _ = data.popitem()
+            last_key = list(data.keys())[-1]
             logger.debug(f"current datetime -> {current_datetime} last bar datetime -> {last_key}")
             logger.debug(f"data received -> {data}")
 
