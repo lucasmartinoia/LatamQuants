@@ -57,6 +57,8 @@ class backtesting():
         self.buy_order_types = ['buy', 'buystop', 'buylimit']
         self.sell_order_types = ['sell', 'sellstop', 'selllimit']
         self.sorted_tick_moment_list = deque()
+        self.bar_data = {}
+        self.market_data = {}
 
         # Store parameters
         self.start_datetime = start_datetime
@@ -115,6 +117,8 @@ class backtesting():
                         self.dict_tickdata_index[symbol] = None
             if len(self.sorted_tick_moment_list) > 0:
                 for symbol_datetime, symbol_index, symbol in self.sorted_tick_moment_list:
+                    # Update market_data
+                    self.market_data[symbol] = {'bid': self.dict_tickdata[symbol].iloc[symbol_index]['Bid'], 'ask': self.dict_tickdata[symbol].iloc[symbol_index]['Ask'], 'tick_value': self.dict_tickdata[symbol].iloc[symbol_index]['Volume']}
                     # 1. Update orders in the broker
                     self.update_orders(symbol)
                     # 2. Trigger tick data events
@@ -148,6 +152,7 @@ class backtesting():
                     if bar_data_index is not None and bar_data_index > self.dict_bardata_index[symbol_tf]:
                         self.dict_bardata_index[symbol_tf] = bar_data_index
                         bar_data = self.dict_bardata[symbol_tf].iloc[self.dict_bardata_index[symbol_tf]]
+                        self.bar_data[symbol_tf] = {'time': bar_data['DateTime'].strftime('%Y-%m-%d %H:%M:%S'), 'open': bar_data['Open'], 'high': bar_data['High'], 'low': bar_data['Low'], 'close': bar_data['Close'], 'tick_volume': bar_data['Volume']}
                         self.event_handler.on_bar_data(symbol, timeframe, bar_data['DateTime'], bar_data['Open'],
                                                        bar_data['High'], bar_data['Low'], bar_data['Close'],
                                                        bar_data['Volume'])

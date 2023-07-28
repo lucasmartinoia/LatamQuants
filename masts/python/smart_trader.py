@@ -86,7 +86,7 @@ class tick_processor():
         self.request_suscribtions()
         # self.request_historic_data()
         self.dma.start()
-        self.get_historic_bars('EURUSD', 'M1', 20)
+        #self.get_historic_bars('EURUSD', 'M1', 20)
 
     def request_suscribtions(self):
         # subscribe to tick data:
@@ -95,8 +95,12 @@ class tick_processor():
         self.dma.subscribe_symbols_bar_data([['EURUSD', 'M1']])
 
     def get_historic_bars(self, symbol, timeframe, periods):
+        delta_fix = 2
+        if self.mode != 'live':
+            delta_fix = 0
         start_datetime, end_datetime = convert_periods_to_datetime_range(periods, timeframe,
                                                                          self.get_current_datetime(symbol))
+        end_datetime = end_datetime + timedelta(hours=delta_fix)
         self.historic_request_last_bars = periods
         self.historic_request_last_symbol = symbol
         self.historic_request_last_timeframe = timeframe
@@ -165,9 +169,12 @@ class tick_processor():
         #         # self.dwx.close_orders_by_magic(0)
 
     def on_bar_data(self, symbol, time_frame, time, open_price, high, low, close_price, tick_volume):
+        logger.debug(f'current_datetime -> {self.get_current_datetime(symbol)}')
         logger.debug(f'on_bar_data: {symbol} {time_frame} {time} {open_price} {high} {low} {close_price} {tick_volume}')
-        self.minute_counter += 1
+        logger.debug(f'bar_data: {self.dma.bar_data}')
+        logger.debug(f'market_data: {self.dma.market_data}')
 
+        self.minute_counter += 1
         # if self.minute_counter == 1:
         #     self.dma.open_order(symbol='EURUSD', order_type='buylimit', lots=0.2, price=1.11270)
         # elif self.minute_counter == 2:
@@ -192,7 +199,7 @@ class tick_processor():
         if self.historic_request_last_symbol == symbol and self.historic_request_last_timeframe == time_frame:
             data = get_lasts_from_dictionary(data, self.historic_request_last_bars)
             logger.debug(f'historic_data bars cutted: {symbol} {time_frame} {len(data)} bars expected {self.historic_request_last_bars}')
-            current_datetime = self.get_current_datetime((symbol))
+            current_datetime = self.get_current_datetime(symbol)
             last_key, _ = data.popitem()
             logger.debug(f"current datetime -> {current_datetime} last bar datetime -> {last_key}")
             logger.debug(f"data received -> {data}")
@@ -273,21 +280,21 @@ setup_logging()
 logger.info('STARTED')
 
 # # FXOpen Demo Account
-MT4_files_dir = 'C:/Users/Usuario/AppData/Roaming/MetaQuotes/Terminal/30D279B64B1858168C932D8264853F2B/MQL4/Files'
-logger.info('MT4_files_dir -> ' + MT4_files_dir)
-processor = tick_processor('live', None, None, None, None, None, None, MT4_files_dir,5)
-sleep_seconds = 1
+# MT4_files_dir = 'C:/Users/Usuario/AppData/Roaming/MetaQuotes/Terminal/30D279B64B1858168C932D8264853F2B/MQL4/Files'
+# logger.info('MT4_files_dir -> ' + MT4_files_dir)
+# processor = tick_processor('live', None, None, None, None, None, None, MT4_files_dir, 3)
+# sleep_seconds = 1
 
 # Backtesting
-# backtesting_data_directory = 'C:/QuantDataManager/export'
-# logger.info('backtesting_data_directory -> ' + backtesting_data_directory)
-# start = datetime.strptime("2022-05-05 00:00:00", "%Y-%m-%d %H:%M:%S")
-# end = datetime.strptime("2022-06-01 00:00:00", "%Y-%m-%d %H:%M:%S")
-# balance = 100000.0
-# currency = 'USD'
-# leverage = 33
-# processor = tick_processor('backtest', start, end, backtesting_data_directory, balance, currency, leverage)
-# sleep_seconds = 0
+backtesting_data_directory = 'C:/QuantDataManager/export'
+logger.info('backtesting_data_directory -> ' + backtesting_data_directory)
+start = datetime.strptime("2022-05-05 00:00:00", "%Y-%m-%d %H:%M:%S")
+end = datetime.strptime("2022-06-01 00:00:00", "%Y-%m-%d %H:%M:%S")
+balance = 100000.0
+currency = 'USD'
+leverage = 33
+processor = tick_processor('backtest', start, end, backtesting_data_directory, balance, currency, leverage)
+sleep_seconds = 0
 
 while processor.dma.ACTIVE:
     sleep(sleep_seconds)
