@@ -3,7 +3,8 @@ from random import random
 from datetime import datetime, timedelta
 from api.dwx_client import dwx_client
 from indicators.macd_platinum_v2 import macd_platinum_v2
-from python.common.conversions import convert_historic_bars_element_to_array, convert_periods_to_datetime_range, get_lasts_from_dictionary
+from python.common.conversions import convert_historic_bars_element_to_array, convert_periods_to_datetime_range, \
+    get_lasts_from_dictionary
 from python.common.logging_config import setup_logging, logger
 from backtesting.backtesting import backtesting
 import json
@@ -58,7 +59,7 @@ class tick_processor():
         self.max_retry_command_seconds = max_retry_command_seconds
         self.verbose = verbose
         self.time_delta_hours = time_delta_hours
-        self.strategies = strategies
+        self.strategies_info = strategies
 
         # private info
         self.last_open_time = datetime.utcnow()
@@ -70,6 +71,9 @@ class tick_processor():
         self.historic_request_last_symbol = None
         self.historic_request_last_bars = None
         self.historic_request_last_timeframe = None
+        self.required_suscriptions = None  # {'EURUSD_H4': ['strategy_id1', 'strategy_id2',..., 'strategy_idn'], 'GBPUSD_M5': ['strategy_idx1', 'strategy_idx2',..., 'strategy_idn']}
+        self.required_historic_bars = None  # {'EURUSD_H4': {'max_bars': 240, 'strategies': {'strategy_id1': bars. 'strategy_id2': bars2}}}
+        self.strategies_instances = None  # {strategy.id: {'instance': instance, 'params': params}}
 
         # set mode
         if self.mode == "live":
@@ -86,18 +90,51 @@ class tick_processor():
                                    back_test_leverage)
 
         logger.info(f"Account info: {self.dma.account_info}")
-        self.request_suscribtions()
-        # self.request_historic_data()
+        self.init_strategies()
         self.dma.start()
-        #self.get_historic_bars('EURUSD', 'M1', 20)
+        # self.get_historic_bars('EURUSD', 'M1', 20)
 
-    def request_suscribtions(self):
+    def init_strategies(self):
+        for strategy_name, strategy_params in self.strategies_info.items():
+            class_ref = globals()[strategy_name]
+            instance = class_ref(smart_trader=self, **strategy_params)
+            self.strategies_instances[instance.id] = {'instance': instance, 'params': strategy_params}
+
+            # Add to subscriptions
+            symbol_tf = f"{strategy_params['symbol']}_{strategy_params['timeframe']}"
+            if symbol_tf in self.required_suscriptions:
+                self.required_suscriptions[symbol_tf] = self.required_suscriptions[symbol_tf].append(instance.id)
+            else:
+                self.required_suscriptions[symbol_tf] = [instance.id]
+
+            # Add to required historic data
+            strategy_required_hist_data = instance.required_data()
+
+            self.required_historic_bars = None  # {'EURUSD_H4': {'max_bars': 240, 'strategies': {'strategy_id1': bars. 'strategy_id2': bars2}}}
+
+
+
+            class_attributes = {
+                "attribute1": 100,
+                "attribute2": "Hello, world!",
+                "__init__": lambda self, param1, param2: setattr(self, "param1", param1) or setattr(self, "param2",
+                                                                                                    param2),
+            }
+            # smart_trader, symbol, timeframe, max_risk_per_trade
+
+        # Unify historic data bar requests in required_historic_bars to be used in on_bar() event.
+
+        # Unify suscriptions
+
+        self.request_suscriptions()
+
+    def request_suscriptions(self):
         # subscribe to tick data:
         self.dma.subscribe_symbols(['EURUSD'])
-        #self.dma.subscribe_symbols(['BTCUSD'])
+        # self.dma.subscribe_symbols(['BTCUSD'])
         # subscribe to bar data:
         self.dma.subscribe_symbols_bar_data([['EURUSD', 'M1']])
-        #self.dma.subscribe_symbols_bar_data([['BTCUSD', 'M1']])
+        # self.dma.subscribe_symbols_bar_data([['BTCUSD', 'M1']])
 
     def get_historic_bars(self, symbol, timeframe, periods):
         delta_fix = 2
@@ -206,7 +243,8 @@ class tick_processor():
         logger.debug(f'historic_data: {symbol} {time_frame} {len(data)} bars')
         if self.historic_request_last_symbol == symbol and self.historic_request_last_timeframe == time_frame:
             data = get_lasts_from_dictionary(data, self.historic_request_last_bars)
-            logger.debug(f'historic_data bars cutted: {symbol} {time_frame} {len(data)} bars expected {self.historic_request_last_bars}')
+            logger.debug(
+                f'historic_data bars cutted: {symbol} {time_frame} {len(data)} bars expected {self.historic_request_last_bars}')
             current_datetime = self.get_current_datetime(symbol)
             last_key = list(data.keys())[-1]
             logger.debug(f"current datetime -> {current_datetime} last bar datetime -> {last_key}")
@@ -285,7 +323,6 @@ class smart_trader():
     =====================================================================================================
 """
 config_file_path = "smart_trader.config"
-
 
 # Read the configuration file and parse its contents into a dictionary
 with open(config_file_path, "r") as file:
