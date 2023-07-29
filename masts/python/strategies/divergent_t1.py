@@ -42,7 +42,7 @@ class DivergentT1(IStrategy):
     def required_data(self):
         return self.required_data
 
-    def execute(self):
+    def execute(self, historic_data):
         # Manage current open orders
         if self._is_ongoing():
             self.manage_orders()

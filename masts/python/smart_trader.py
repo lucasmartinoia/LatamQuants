@@ -71,6 +71,8 @@ class tick_processor():
         self.historic_request_last_symbol = None
         self.historic_request_last_bars = None
         self.historic_request_last_timeframe = None
+        self.historic_request_last_timestamp = None
+        self.historic_data = None # {'EURUSD_H4': {'timestamp': 97779788, 'data': data}, 'GBPUSD': {'timestamp': 97779788, 'data': data}}
         self.required_suscriptions = None  # {'EURUSD_H4': ['strategy_id1', 'strategy_id2',..., 'strategy_idn'], 'GBPUSD_M5': ['strategy_idx1', 'strategy_idx2',..., 'strategy_idn']}
         self.required_historic_bars = None  # {'EURUSD_H4': {'max_bars': 240, 'strategies': {'strategy_id1': bars. 'strategy_id2': bars2}}}
         self.strategies_instances = None  # {strategy.id: {'instance': instance, 'params': params}}
@@ -91,6 +93,7 @@ class tick_processor():
 
         logger.info(f"Account info: {self.dma.account_info}")
         self.init_strategies()
+        self.request_suscriptions()
         self.dma.start()
         # self.get_historic_bars('EURUSD', 'M1', 20)
 
@@ -101,47 +104,48 @@ class tick_processor():
             self.strategies_instances[instance.id] = {'instance': instance, 'params': strategy_params}
 
             # Add to subscriptions
+            symbol_tf = f"{strategy_params['symbol']}_TICK"
+            self.add_strategy_required_suscription(symbol_tf, instance.id)
             symbol_tf = f"{strategy_params['symbol']}_{strategy_params['timeframe']}"
-            if symbol_tf in self.required_suscriptions:
-                self.required_suscriptions[symbol_tf] = self.required_suscriptions[symbol_tf].append(instance.id)
-            else:
-                self.required_suscriptions[symbol_tf] = [instance.id]
+            self.add_strategy_required_suscription(symbol_tf, instance.id)
 
             # Add to required historic data
             strategy_required_hist_data = instance.required_data()
+            for hist_symbol_tf, hist_bars in strategy_required_hist_data.items():
+                if hist_symbol_tf in self.required_historic_bars:
+                    self.required_historic_bars[hist_symbol_tf] = self.required_historic_bars[hist_symbol_tf]['strategies'].append(instance.id)
+                    if self.required_historic_bars[hist_symbol_tf]['max_bars'] < hist_bars:
+                        self.required_historic_bars[hist_symbol_tf]['max_bars'] = hist_bars
+                else:
+                    self.required_historic_bars[hist_symbol_tf] = {'max_bars': hist_bars, 'strategies': {instance.id: hist_bars}}
 
-            self.required_historic_bars = None  # {'EURUSD_H4': {'max_bars': 240, 'strategies': {'strategy_id1': bars. 'strategy_id2': bars2}}}
-
-
-
-            class_attributes = {
-                "attribute1": 100,
-                "attribute2": "Hello, world!",
-                "__init__": lambda self, param1, param2: setattr(self, "param1", param1) or setattr(self, "param2",
-                                                                                                    param2),
-            }
-            # smart_trader, symbol, timeframe, max_risk_per_trade
-
-        # Unify historic data bar requests in required_historic_bars to be used in on_bar() event.
-
-        # Unify suscriptions
-
-        self.request_suscriptions()
+    def add_strategy_required_suscription(self, symbol_tf, strategy_id):
+        if symbol_tf in self.required_suscriptions:
+            self.required_suscriptions[symbol_tf] = self.required_suscriptions[symbol_tf].append(strategy_id)
+        else:
+            self.required_suscriptions[symbol_tf] = [strategy_id]
 
     def request_suscriptions(self):
+        symbols_tick = []
+        symbols_bar = []
+        for symbol_tf in self.required_suscriptions.items():
+            symbol, timeframe = symbol_tf.split('_')
+            if timeframe == 'TICK':
+                symbols_tick.append(symbol)
+            else:
+                symbols_bar.append([symbol, timeframe])
         # subscribe to tick data:
-        self.dma.subscribe_symbols(['EURUSD'])
-        # self.dma.subscribe_symbols(['BTCUSD'])
+        self.dma.subscribe_symbols(symbols_tick)
         # subscribe to bar data:
-        self.dma.subscribe_symbols_bar_data([['EURUSD', 'M1']])
-        # self.dma.subscribe_symbols_bar_data([['BTCUSD', 'M1']])
+        self.dma.subscribe_symbols_bar_data(symbols_bar)
 
-    def get_historic_bars(self, symbol, timeframe, periods):
+    def get_historic_bars(self, symbol, timeframe, periods, current_datetime = None):
         delta_fix = 2
         if self.mode != 'live':
             delta_fix = 0
-        start_datetime, end_datetime = convert_periods_to_datetime_range(periods, timeframe,
-                                                                         self.get_current_datetime(symbol))
+        if current_datetime == None:
+            current_datetime = self.get_current_datetime(symbol)
+        start_datetime, end_datetime = convert_periods_to_datetime_range(periods, timeframe, current_datetime)
         end_datetime = end_datetime + timedelta(hours=delta_fix)
         self.historic_request_last_bars = periods
         self.historic_request_last_symbol = symbol
@@ -216,9 +220,7 @@ class tick_processor():
         logger.debug(f'on_bar_data: {symbol} {time_frame} {time} {open_price} {high} {low} {close_price} {tick_volume}')
         logger.debug(f'bar_data: {self.dma.bar_data}')
         logger.debug(f'market_data: {self.dma.market_data}')
-        self.minute_counter += 1
-        if self.minute_counter == 1:
-            self.get_historic_bars(symbol, "M1", 200)
+        self.request_historic_data(symbol, time_frame)
 
         # if self.minute_counter == 1:
         #     self.dma.open_order(symbol='EURUSD', order_type='buylimit', lots=0.2, price=1.11270)
@@ -239,17 +241,34 @@ class tick_processor():
         #                         price=1.108933, lots=0.4)
         #     self.stop_trading = True
 
+    def request_historic_data(self, symbol, time_frame):
+        # TODO: implements looking for all elements in self.required_historic_bars with the same symbol.
+        self.historic_request_last_timestamp = self.get_current_datetime(symbol)
+
+    def send_historic_data_to_strategies(self, symbol):
+        updated_symbol_tfs = [key for key, value in self.historic_data.items() if
+                              key.startswith(symbol) and value['timestamp'] == self.historic_request_last_timestamp]
+        all_symbol_tfs = [key for key, value in self.historic_data.items() if key.startswith(symbol)]
+        if len(updated_symbol_tfs)==len(all_symbol_tfs): # all historic requests for the symbol were completed.
+            # TODO: Send data to strategies checking which strategies have the symbol and calling check() for each strategy instance.
+
+
     def on_historic_data(self, symbol, time_frame, data):
         logger.debug(f'historic_data: {symbol} {time_frame} {len(data)} bars')
-        if self.historic_request_last_symbol == symbol and self.historic_request_last_timeframe == time_frame:
-            data = get_lasts_from_dictionary(data, self.historic_request_last_bars)
-            logger.debug(
-                f'historic_data bars cutted: {symbol} {time_frame} {len(data)} bars expected {self.historic_request_last_bars}')
-            current_datetime = self.get_current_datetime(symbol)
-            last_key = list(data.keys())[-1]
-            logger.debug(f"current datetime -> {current_datetime} last bar datetime -> {last_key}")
-            logger.debug(f"data received -> {data}")
+        # Cut bars to only required ones.
+        data = get_lasts_from_dictionary(data, self.historic_request_last_bars)
+        # Store data.
+        self.historic_data[f'{symbol}_{time_frame}'] = {'timestamp': self.historic_request_last_timestamp,
+                                                        'data': data}
+        logger.debug(
+            f'historic_data bars cutted: {symbol} {time_frame} {len(data)} bars expected {self.historic_request_last_bars}')
+        current_datetime = self.get_current_datetime(symbol)
+        last_key = list(data.keys())[-1]
+        logger.debug(f"current datetime -> {current_datetime} last bar datetime -> {last_key}")
+        #logger.debug(f"data received -> {data}")
+        self.send_historic_data_to_strategies(symbol)
 
+        # # Example about how to call an indicator.
         # close_prices = convert_historic_bars_element_to_array('close', data)
         # volumes = convert_historic_bars_element_to_array('tick_volume', data)
         # self.macd_plat = macd_platinum_v2(close_prices, volumes)
