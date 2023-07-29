@@ -6,6 +6,7 @@ from indicators.macd_platinum_v2 import macd_platinum_v2
 from python.common.conversions import convert_historic_bars_element_to_array, convert_periods_to_datetime_range, get_lasts_from_dictionary
 from python.common.logging_config import setup_logging, logger
 from backtesting.backtesting import backtesting
+import json
 
 """
 
@@ -42,20 +43,22 @@ class tick_processor():
                  time_delta_hours=5,
                  sleep_delay=0.005,  # 5 ms for time.sleep()
                  max_retry_command_seconds=10,  # retry to send the command for 10 seconds if not successful.
-                 verbose=True
+                 verbose=True,
+                 strategies=None
                  ):
         self.validate_parameters(mode, back_test_start, back_test_end, back_test_directory_path, MT4_directory_path)
 
         # store params
         self.mode = mode
-        self.back_test_start = back_test_start
-        self.back_test_end = back_test_end
+        self.back_test_start = datetime.strptime(back_test_start)
+        self.back_test_end = datetime.strptime(back_test_end)
         self.back_test_directory_path = back_test_directory_path
         self.MT4_directory_path = MT4_directory_path
         self.sleep_delay = sleep_delay
         self.max_retry_command_seconds = max_retry_command_seconds
         self.verbose = verbose
         self.time_delta_hours = time_delta_hours
+        self.strategies = strategies
 
         # private info
         self.last_open_time = datetime.utcnow()
@@ -281,25 +284,29 @@ class smart_trader():
     SMART TRADER - MAIN
     =====================================================================================================
 """
+config_file_path = "smart_trader.config"
+
+
+# Read the configuration file and parse its contents into a dictionary
+with open(config_file_path, "r") as file:
+    config_data = json.load(file)
+
 setup_logging()
 logger.info('STARTED')
 
 # # FXOpen Demo Account
-# MT4_files_dir = 'C:/Users/Usuario/AppData/Roaming/MetaQuotes/Terminal/30D279B64B1858168C932D8264853F2B/MQL4/Files'
-# logger.info('MT4_files_dir -> ' + MT4_files_dir)
-# processor = tick_processor('live', None, None, None, None, None, None, MT4_files_dir, 3)
+# config_file_path = "smart_trader_fxopen_demo.config"
 # sleep_seconds = 1
 
 # Backtesting
-backtesting_data_directory = 'C:/QuantDataManager/export'
-logger.info('backtesting_data_directory -> ' + backtesting_data_directory)
-start = datetime.strptime("2022-05-05 00:00:00", "%Y-%m-%d %H:%M:%S")
-end = datetime.strptime("2022-06-01 00:00:00", "%Y-%m-%d %H:%M:%S")
-balance = 100000.0
-currency = 'USD'
-leverage = 33
-processor = tick_processor('backtest', start, end, backtesting_data_directory, balance, currency, leverage)
+config_file_path = "smart_trader_backtesting.config"
 sleep_seconds = 0
+
+# Read the configuration file and parse its contents into a dictionary
+with open(config_file_path, "r") as file:
+    config_data = json.load(file)
+parameters = config_data['tick_processor_params']
+processor = tick_processor(**parameters)
 
 while processor.dma.ACTIVE:
     sleep(sleep_seconds)
