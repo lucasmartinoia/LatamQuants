@@ -19,21 +19,23 @@ class DivergentT1(IStrategy):
 
     def _get_signal(self, market_trend):
         result = SignalType.NONE
-
+        # TODO: implements _get_signal
         logger.debug(f"_get_signal() -> {result}")
         return result
 
     def _get_market_trend(self):
         result = MarketTrend.UNDEFINED
-
+        # TODO: implements _get_market_trend checking EMAS.
         result = MarketTrend.BULL
         logger.debug(f"_get_market_trend() -> {result}")
         return result
 
     def _is_ongoing(self):
         result = False
+        # TODO: implements _is_ongoing -> check if there are open orders for the strategy.
 
     def _open_orders(self, signal):
+        # TODO: implements _open_orders -> define which comment are going to have the orders.
         dummy = 1
 
     ##############################################################################
@@ -54,7 +56,6 @@ class DivergentT1(IStrategy):
                 signal = self._get_signal(marketTrend)
                 self._open_orders(signal)
 
-
-
     def manage_orders(self):
+        # TODO: implement manage_orders() -> trailing stoploss / hidden take profit or stop loss.
         dummy = 1

@@ -68,10 +68,7 @@ class tick_processor():
         # private variables
         self.stop_trading = False
         self.minute_counter = 0
-        self.historic_request_last_symbol = None
-        self.historic_request_last_bars = None
-        self.historic_request_last_timeframe = None
-        self.historic_request_last_timestamp = None
+        self.historic_request_last_timestamp = None # Used to control when all historic requests for a symbol were completed to inform the strategies related.
         self.historic_data = None # {'EURUSD_H4': {'timestamp': 97779788, 'data': data}, 'GBPUSD': {'timestamp': 97779788, 'data': data}}
         self.required_suscriptions = None  # {'EURUSD_H4': ['strategy_id1', 'strategy_id2',..., 'strategy_idn'], 'GBPUSD_M5': ['strategy_idx1', 'strategy_idx2',..., 'strategy_idn']}
         self.required_historic_bars = None  # {'EURUSD_H4': {'max_bars': 240, 'strategies': {'strategy_id1': bars. 'strategy_id2': bars2}}}
@@ -147,9 +144,6 @@ class tick_processor():
             current_datetime = self.get_current_datetime(symbol)
         start_datetime, end_datetime = convert_periods_to_datetime_range(periods, timeframe, current_datetime)
         end_datetime = end_datetime + timedelta(hours=delta_fix)
-        self.historic_request_last_bars = periods
-        self.historic_request_last_symbol = symbol
-        self.historic_request_last_timeframe = timeframe
         logger.debug(f'get_historic_bars() -> {symbol} {timeframe} {periods}')
         logger.debug(f"call -> get_historic_data({symbol}, {timeframe}, {start_datetime}, {end_datetime})")
         self.dma.get_historic_data(symbol, timeframe, start_datetime.timestamp(), end_datetime.timestamp())
@@ -185,6 +179,7 @@ class tick_processor():
 
     def on_tick(self, symbol, bid, ask):
         now = datetime.utcnow()
+        # TODO: call manage_orders() for those strategies with the same symbol.
         # logger.debug(f'on_tick: {symbol} {bid} {ask}')
 
         # to test trading. 
@@ -243,11 +238,11 @@ class tick_processor():
 
     def request_historic_data(self, symbol, time_frame):
         # TODO: implements looking for all elements in self.required_historic_bars with the same symbol.
-        self.historic_request_last_timestamp = self.get_current_datetime(symbol)
+        self.historic_request_last_timestamp[symbol] = self.get_current_datetime(symbol).timestamp()
 
     def send_historic_data_to_strategies(self, symbol):
         updated_symbol_tfs = [key for key, value in self.historic_data.items() if
-                              key.startswith(symbol) and value['timestamp'] == self.historic_request_last_timestamp]
+                              key.startswith(symbol) and value['timestamp'] == self.historic_request_last_timestamp[symbol]]
         all_symbol_tfs = [key for key, value in self.historic_data.items() if key.startswith(symbol)]
         if len(updated_symbol_tfs)==len(all_symbol_tfs): # all historic requests for the symbol were completed.
             # TODO: Send data to strategies checking which strategies have the symbol and calling check() for each strategy instance.
