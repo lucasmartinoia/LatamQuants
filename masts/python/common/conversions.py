@@ -19,7 +19,7 @@ def convert_bar_dataframe_to_dict(df, start_datetime=None, end_datetime=None):
     if start_datetime is not None:
         df = df[df['DateTime'] >= start_datetime]
     if end_datetime is not None:
-        df = df[df['DateTime'] < end_datetime]
+        df = df[df['DateTime'] <= end_datetime]
 
     # Convert the DataFrame to dictionary with orient='records'
     data_dict = df.to_dict(orient='records')
@@ -87,8 +87,9 @@ def get_bar_data_clean_date(dt, timeframe):
 def convert_periods_to_datetime_range(periods, timeframe, end_datetime):
     possible_missing_periods_fix = 100
     # Check if there are Saturdays or Sundays between start and end datetimes
-    end_datetime = get_bar_data_clean_date(end_datetime, timeframe)
     timeframe_delta = get_timeframe_delta(timeframe)
+    # Get clean data - 1 period to avoid current bar.
+    end_datetime = get_bar_data_clean_date(end_datetime, timeframe) - timeframe_delta
     start_datetime = end_datetime - ((periods + possible_missing_periods_fix) * timeframe_delta)
     current_date = end_datetime
     while current_date >= start_datetime:

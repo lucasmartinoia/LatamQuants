@@ -91,8 +91,10 @@ class tick_processor():
     def request_suscribtions(self):
         # subscribe to tick data:
         self.dma.subscribe_symbols(['EURUSD'])
+        #self.dma.subscribe_symbols(['BTCUSD'])
         # subscribe to bar data:
         self.dma.subscribe_symbols_bar_data([['EURUSD', 'M1']])
+        #self.dma.subscribe_symbols_bar_data([['BTCUSD', 'M1']])
 
     def get_historic_bars(self, symbol, timeframe, periods):
         delta_fix = 2
