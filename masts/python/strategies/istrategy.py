@@ -1,4 +1,18 @@
 from abc import ABC, abstractmethod
+from enum import Enum
+
+
+class SignalType(Enum):
+    NONE = 0
+    BUY = 1
+    SELL = 2
+
+class MarketTrend(Enum):
+    UNDEFINED = 0
+    BULL = 1
+    BEAR = 2
+    SIDEWAYS = 3
+
 
 # Define the interface (abstract base class)
 class IStrategy(ABC):
@@ -18,7 +32,6 @@ class IStrategy(ABC):
     def manage_orders(self):
         pass
 
-    @property
     @abstractmethod
     def required_data(self):
-        return self.required_data
+        pass
