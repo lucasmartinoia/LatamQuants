@@ -25,7 +25,7 @@ class IStrategy(ABC):
         self.required_data = {}
 
     @abstractmethod
-    def execute(self, amount):
+    def execute(self, historic_data):
         pass
 
     @abstractmethod

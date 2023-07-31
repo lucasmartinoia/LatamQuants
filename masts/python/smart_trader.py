@@ -179,8 +179,10 @@ class tick_processor():
 
     def on_tick(self, symbol, bid, ask):
         now = datetime.utcnow()
-        # TODO: call manage_orders() for those strategies with the same symbol.
-        # logger.debug(f'on_tick: {symbol} {bid} {ask}')
+        keys = [key for key, value in self.strategies_instances.items() if
+                              value['params']['symbol'] == symbol]
+        for strategy_key in keys:
+            self.strategies_instances[strategy_key]['instance'].manage_orders()
 
         # to test trading. 
         # this will randomly try to open and close orders every few seconds. 
@@ -237,16 +239,23 @@ class tick_processor():
         #     self.stop_trading = True
 
     def request_historic_data(self, symbol, time_frame):
-        # TODO: implements looking for all elements in self.required_historic_bars with the same symbol.
         self.historic_request_last_timestamp[symbol] = self.get_current_datetime(symbol).timestamp()
+        keys_symbol_tf = [key for key, value in self.historic_data.items() if key.startswith(symbol)]
+        for key_symbol_tf in keys_symbol_tf:
+            key_symbol, key_tf = key_symbol_tf.split('_')
+            bars = self.required_historic_bars[key_symbol_tf]['max_bars']
+            self.get_historic_bars(key_symbol,key_tf,bars)
 
     def send_historic_data_to_strategies(self, symbol):
         updated_symbol_tfs = [key for key, value in self.historic_data.items() if
                               key.startswith(symbol) and value['timestamp'] == self.historic_request_last_timestamp[symbol]]
         all_symbol_tfs = [key for key, value in self.historic_data.items() if key.startswith(symbol)]
         if len(updated_symbol_tfs)==len(all_symbol_tfs): # all historic requests for the symbol were completed.
-            # TODO: Send data to strategies checking which strategies have the symbol and calling check() for each strategy instance.
-
+            historic_data_to_send = dict(filter(lambda item: item[0] in all_symbol_tfs, self.historic_data.items()))
+            keys = [key for key, value in self.strategies_instances.items() if
+                    value['params']['symbol'] == symbol]
+            for strategy_key in keys:
+                self.strategies_instances[strategy_key]['instance'].execute(historic_data_to_send)
 
     def on_historic_data(self, symbol, time_frame, data):
         logger.debug(f'historic_data: {symbol} {time_frame} {len(data)} bars')
