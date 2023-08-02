@@ -3,12 +3,13 @@ from istrategy import IStrategy, SignalType, MarketTrend
 
 
 class DivergentT1(IStrategy):
-
+    MAGIC_NO = 1
     def __init__(self, smart_trader, symbol, timeframe, max_risk_per_trade):
         super().__init__(smart_trader, symbol, timeframe, max_risk_per_trade)  # Call the constructor of the base class
         self._set_required_bars()
         self.name = "DivergentT1"
         self.id = f"{self.name}_{symbol}_{timeframe}"
+        self.magic_no = self.MAGIC_NO # identify orders in MT4 for this strategy.
         logger.info(f"DivergentT1({symbol}, {timeframe}, {max_risk_per_trade})")
 
     def _set_required_bars(self):

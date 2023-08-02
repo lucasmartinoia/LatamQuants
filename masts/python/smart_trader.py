@@ -68,12 +68,12 @@ class tick_processor():
         # private variables
         self.stop_trading = False
         self.minute_counter = 0
-        self.historic_request_last_timestamp = None # Used to control when all historic requests for a symbol were completed to inform the strategies related.
-        self.historic_data = None # {'EURUSD_H4': {'timestamp': 97779788, 'data': data}, 'GBPUSD': {'timestamp': 97779788, 'data': data}}
+        self.historic_request_last_timestamp = None  # Used to control when all historic requests for a symbol were completed to inform the strategies related.
+        self.historic_data = None  # {'EURUSD_H4': {'timestamp': 97779788, 'data': data}, 'GBPUSD': {'timestamp': 97779788, 'data': data}}
         self.required_suscriptions = None  # {'EURUSD_H4': ['strategy_id1', 'strategy_id2',..., 'strategy_idn'], 'GBPUSD_M5': ['strategy_idx1', 'strategy_idx2',..., 'strategy_idn']}
         self.required_historic_bars = None  # {'EURUSD_H4': {'max_bars': 240, 'strategies': {'strategy_id1': bars. 'strategy_id2': bars2}}}
         self.strategies_instances = None  # {strategy.id: {'instance': instance, 'params': params}}
-
+        self.orders = None  #
         # set mode
         if self.mode == "live":
             self.dma = dwx_client(self, MT4_directory_path, sleep_delay,
@@ -110,11 +110,13 @@ class tick_processor():
             strategy_required_hist_data = instance.required_data()
             for hist_symbol_tf, hist_bars in strategy_required_hist_data.items():
                 if hist_symbol_tf in self.required_historic_bars:
-                    self.required_historic_bars[hist_symbol_tf] = self.required_historic_bars[hist_symbol_tf]['strategies'].append(instance.id)
+                    self.required_historic_bars[hist_symbol_tf] = self.required_historic_bars[hist_symbol_tf][
+                        'strategies'].append(instance.id)
                     if self.required_historic_bars[hist_symbol_tf]['max_bars'] < hist_bars:
                         self.required_historic_bars[hist_symbol_tf]['max_bars'] = hist_bars
                 else:
-                    self.required_historic_bars[hist_symbol_tf] = {'max_bars': hist_bars, 'strategies': {instance.id: hist_bars}}
+                    self.required_historic_bars[hist_symbol_tf] = {'max_bars': hist_bars,
+                                                                   'strategies': {instance.id: hist_bars}}
 
     def add_strategy_required_suscription(self, symbol_tf, strategy_id):
         if symbol_tf in self.required_suscriptions:
@@ -136,7 +138,7 @@ class tick_processor():
         # subscribe to bar data:
         self.dma.subscribe_symbols_bar_data(symbols_bar)
 
-    def get_historic_bars(self, symbol, timeframe, periods, current_datetime = None):
+    def get_historic_bars(self, symbol, timeframe, periods, current_datetime=None):
         delta_fix = 2
         if self.mode != 'live':
             delta_fix = 0
@@ -180,7 +182,7 @@ class tick_processor():
     def on_tick(self, symbol, bid, ask):
         now = datetime.utcnow()
         keys = [key for key, value in self.strategies_instances.items() if
-                              value['params']['symbol'] == symbol]
+                value['params']['symbol'] == symbol]
         for strategy_key in keys:
             self.strategies_instances[strategy_key]['instance'].manage_orders()
 
@@ -244,13 +246,14 @@ class tick_processor():
         for key_symbol_tf in keys_symbol_tf:
             key_symbol, key_tf = key_symbol_tf.split('_')
             bars = self.required_historic_bars[key_symbol_tf]['max_bars']
-            self.get_historic_bars(key_symbol,key_tf,bars)
+            self.get_historic_bars(key_symbol, key_tf, bars)
 
     def send_historic_data_to_strategies(self, symbol):
         updated_symbol_tfs = [key for key, value in self.historic_data.items() if
-                              key.startswith(symbol) and value['timestamp'] == self.historic_request_last_timestamp[symbol]]
+                              key.startswith(symbol) and value['timestamp'] == self.historic_request_last_timestamp[
+                                  symbol]]
         all_symbol_tfs = [key for key, value in self.historic_data.items() if key.startswith(symbol)]
-        if len(updated_symbol_tfs)==len(all_symbol_tfs): # all historic requests for the symbol were completed.
+        if len(updated_symbol_tfs) == len(all_symbol_tfs):  # all historic requests for the symbol were completed.
             historic_data_to_send = dict(filter(lambda item: item[0] in all_symbol_tfs, self.historic_data.items()))
             keys = [key for key, value in self.strategies_instances.items() if
                     value['params']['symbol'] == symbol]
@@ -269,7 +272,7 @@ class tick_processor():
         current_datetime = self.get_current_datetime(symbol)
         last_key = list(data.keys())[-1]
         logger.debug(f"current datetime -> {current_datetime} last bar datetime -> {last_key}")
-        #logger.debug(f"data received -> {data}")
+        # logger.debug(f"data received -> {data}")
         self.send_historic_data_to_strategies(symbol)
 
         # # Example about how to call an indicator.
@@ -296,6 +299,10 @@ class tick_processor():
         logger.debug(f'on_order_event. open_orders: {len(self.dma.open_orders)} open orders')
         logger.debug(self.dma.open_orders)
 
+    def get_strategy_orders(self, magic_no):
+        strategy_orders = [(ticket_no, trade_data) for ticket_no, trade_data in self.dma.open_orders.items() if
+                           trade_data.get('magic') == magic_no]
+        return strategy_orders
 
 """ =====================================================================================================
     PROCESS EVENTS FOR DWX AND BACKTESTING
