@@ -4,12 +4,13 @@ from istrategy import IStrategy, SignalType, MarketTrend
 
 class DivergentT1(IStrategy):
     MAGIC_NO = 1
+
     def __init__(self, smart_trader, symbol, timeframe, max_risk_per_trade):
         super().__init__(smart_trader, symbol, timeframe, max_risk_per_trade)  # Call the constructor of the base class
         self._set_required_bars()
         self.name = "DivergentT1"
         self.id = f"{self.name}_{symbol}_{timeframe}"
-        self.magic_no = self.MAGIC_NO # identify orders in MT4 for this strategy.
+        self.magic_no = self.MAGIC_NO  # identify orders in MT4 for this strategy.
         logger.info(f"DivergentT1({symbol}, {timeframe}, {max_risk_per_trade})")
 
     def _set_required_bars(self):
@@ -32,11 +33,11 @@ class DivergentT1(IStrategy):
         return result
 
     def _is_ongoing(self):
-        result = False
-        # TODO: implements _is_ongoing -> check if there are open orders for the strategy.
+        result = len(self.smart_trader.get_strategy_orders(self.magic_no)) > 0
+        return result
 
     def _open_orders(self, signal):
-        # TODO: implements _open_orders -> define which comment are going to have the orders.
+        # TODO: implements _open_orders -> create orders for the strategy.
         dummy = 1
 
     ##############################################################################
