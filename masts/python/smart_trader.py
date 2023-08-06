@@ -8,6 +8,8 @@ from python.common.conversions import convert_historic_bars_element_to_array, co
 from python.common.logging_config import setup_logging, logger
 from backtesting.backtesting import backtesting
 import json
+from python.strategies.divergent_t1 import DivergentT1
+from python.strategies.istrategy import IStrategy, SignalType, MarketTrend
 
 """
 
@@ -51,8 +53,8 @@ class tick_processor():
 
         # store params
         self.mode = mode
-        self.back_test_start = datetime.strptime(back_test_start)
-        self.back_test_end = datetime.strptime(back_test_end)
+        self.back_test_start = datetime.strptime(back_test_start, '%Y-%m-%d %H:%M:%S')
+        self.back_test_end = datetime.strptime(back_test_end, '%Y-%m-%d %H:%M:%S')
         self.back_test_directory_path = back_test_directory_path
         self.MT4_directory_path = MT4_directory_path
         self.sleep_delay = sleep_delay
@@ -68,12 +70,12 @@ class tick_processor():
         # private variables
         self.stop_trading = False
         self.minute_counter = 0
-        self.historic_request_last_timestamp = None  # Used to control when all historic requests for a symbol were completed to inform the strategies related.
-        self.historic_data = None  # {'EURUSD_H4': {'timestamp': 97779788, 'data': data}, 'GBPUSD': {'timestamp': 97779788, 'data': data}}
-        self.required_suscriptions = None  # {'EURUSD_H4': ['strategy_id1', 'strategy_id2',..., 'strategy_idn'], 'GBPUSD_M5': ['strategy_idx1', 'strategy_idx2',..., 'strategy_idn']}
-        self.required_historic_bars = None  # {'EURUSD_H4': {'max_bars': 240, 'strategies': {'strategy_id1': bars. 'strategy_id2': bars2}}}
-        self.strategies_instances = None  # {strategy.id: {'instance': instance, 'params': params}}
-        self.orders = None  #
+        self.historic_request_last_timestamp = {}  # Used to control when all historic requests for a symbol were completed to inform the strategies related.
+        self.historic_data = {}  # {'EURUSD_H4': {'timestamp': 97779788, 'data': data}, 'GBPUSD': {'timestamp': 97779788, 'data': data}}
+        self.required_suscriptions = {}  # {'EURUSD_H4': ['strategy_id1', 'strategy_id2',..., 'strategy_idn'], 'GBPUSD_M5': ['strategy_idx1', 'strategy_idx2',..., 'strategy_idn']}
+        self.required_historic_bars = {}  # {'EURUSD_H4': {'max_bars': 240, 'strategies': {'strategy_id1': bars. 'strategy_id2': bars2}}}
+        self.strategies_instances = {}  # {strategy.id: {'instance': instance, 'params': params}}
+        self.orders = {}  #
         # set mode
         if self.mode == "live":
             self.dma = dwx_client(self, MT4_directory_path, sleep_delay,
@@ -94,10 +96,15 @@ class tick_processor():
         self.dma.start()
         # self.get_historic_bars('EURUSD', 'M1', 20)
 
+    def get_strategy_instance(self, strategy_name, strategy_params):
+        result = None
+        if strategy_name == 'DivergentT1':
+            result = DivergentT1(self, **strategy_params)
+        return result
+
     def init_strategies(self):
         for strategy_name, strategy_params in self.strategies_info.items():
-            class_ref = globals()[strategy_name]
-            instance = class_ref(smart_trader=self, **strategy_params)
+            instance = self.get_strategy_instance(strategy_name, strategy_params)
             self.strategies_instances[instance.id] = {'instance': instance, 'params': strategy_params}
 
             # Add to subscriptions
@@ -107,7 +114,7 @@ class tick_processor():
             self.add_strategy_required_suscription(symbol_tf, instance.id)
 
             # Add to required historic data
-            strategy_required_hist_data = instance.required_data()
+            strategy_required_hist_data = instance.required_data
             for hist_symbol_tf, hist_bars in strategy_required_hist_data.items():
                 if hist_symbol_tf in self.required_historic_bars:
                     self.required_historic_bars[hist_symbol_tf] = self.required_historic_bars[hist_symbol_tf][
@@ -127,7 +134,7 @@ class tick_processor():
     def request_suscriptions(self):
         symbols_tick = []
         symbols_bar = []
-        for symbol_tf in self.required_suscriptions.items():
+        for symbol_tf, strategy_id in self.required_suscriptions.items():
             symbol, timeframe = symbol_tf.split('_')
             if timeframe == 'TICK':
                 symbols_tick.append(symbol)
@@ -242,7 +249,7 @@ class tick_processor():
 
     def request_historic_data(self, symbol, time_frame):
         self.historic_request_last_timestamp[symbol] = self.get_current_datetime(symbol).timestamp()
-        keys_symbol_tf = [key for key, value in self.historic_data.items() if key.startswith(symbol)]
+        keys_symbol_tf = [key for key, value in self.required_historic_bars.items() if key.startswith(symbol)]
         for key_symbol_tf in keys_symbol_tf:
             key_symbol, key_tf = key_symbol_tf.split('_')
             bars = self.required_historic_bars[key_symbol_tf]['max_bars']
@@ -304,6 +311,7 @@ class tick_processor():
                            trade_data.get('magic') == magic_no]
         return strategy_orders
 
+
 """ =====================================================================================================
     PROCESS EVENTS FOR DWX AND BACKTESTING
     =====================================================================================================
@@ -352,12 +360,6 @@ class smart_trader():
     SMART TRADER - MAIN
     =====================================================================================================
 """
-config_file_path = "smart_trader.config"
-
-# Read the configuration file and parse its contents into a dictionary
-with open(config_file_path, "r") as file:
-    config_data = json.load(file)
-
 setup_logging()
 logger.info('STARTED')
 

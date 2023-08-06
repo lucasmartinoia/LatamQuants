@@ -1,6 +1,7 @@
+import talib
 from python.common.logging_config import logger
-from istrategy import IStrategy, SignalType, MarketTrend
-
+from python.strategies.istrategy import IStrategy, SignalType, MarketTrend
+from python.indicators.macd_platinum_v2 import macd_platinum_v2
 
 class DivergentT1(IStrategy):
     MAGIC_NO = 1
@@ -11,11 +12,11 @@ class DivergentT1(IStrategy):
         self.name = "DivergentT1"
         self.id = f"{self.name}_{symbol}_{timeframe}"
         self.magic_no = self.MAGIC_NO  # identify orders in MT4 for this strategy.
+        self.historic_data = {}
         logger.info(f"DivergentT1({symbol}, {timeframe}, {max_risk_per_trade})")
 
     def _set_required_bars(self):
-        self.required_data = None
-        self.required_data[f"{self.symbol}_{self.timeframe}"] = 240
+        self.required_data = {f"{self.symbol}_{self.timeframe}": 240}
         if self.timeframe == 'H4':
             self.required_data[f"{self.symbol}_{'H1'}"] = 240
 
@@ -28,6 +29,9 @@ class DivergentT1(IStrategy):
     def _get_market_trend(self):
         result = MarketTrend.UNDEFINED
         # TODO: implements _get_market_trend checking EMAS.
+
+
+
         result = MarketTrend.BULL
         logger.debug(f"_get_market_trend() -> {result}")
         return result
@@ -40,6 +44,15 @@ class DivergentT1(IStrategy):
         # TODO: implements _open_orders -> create orders for the strategy.
         dummy = 1
 
+    def _validate_historic_data(self, historic_data):
+        result = None
+
+        
+
+
+
+        return result
+
     ##############################################################################
     # Interface methods
     ##############################################################################
@@ -47,12 +60,13 @@ class DivergentT1(IStrategy):
         return self.required_data
 
     def execute(self, historic_data):
+        self.historic_data = self._validate_historic_data(historic_data)
+
         # Manage current open orders
         if self._is_ongoing():
             self.manage_orders()
-
-        # Open orders only if there isn't any open trade for the strategy
-        if not self._is_ongoing():
+        elif self.historic_data is not None:
+            # Open orders only if there isn't any open trade for the strategy
             marketTrend = self._get_market_trend()
             if marketTrend != MarketTrend.UNDEFINED and marketTrend != MarketTrend.SIDEWAYS:
                 signal = self._get_signal(marketTrend)

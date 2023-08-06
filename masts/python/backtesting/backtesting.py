@@ -251,19 +251,16 @@ class backtesting():
                 self.dict_tickdata.setdefault(symbol, 0)
 
     def check_data_dates(self, df, start_time, end_time):
+        result = False
         first_row_datetime = df.iloc[0]['DateTime']
         last_row_datetime = df.iloc[-1]['DateTime']
         if start_time < first_row_datetime:
             logger.error(f"start_time ({start_time}) is lower than first row datetime ({first_row_datetime})")
-            raise Exception(f"start_time ({start_time}) is lower than first row datetime ({first_row_datetime})")
-            exit()
         elif end_time > last_row_datetime:
             logger.error(f"end_time ({end_time}) is higher than last row datetime ({last_row_datetime})")
-            raise Exception(f"end_time ({end_time}) is higher than last row datetime ({last_row_datetime})")
-            exit()
         else:
-            return True
-
+            result = True
+        return result
     def subscribe_symbols_bar_data(self, symbolTimes):
         for st in symbolTimes:
             self.load_bardata_file(st)
