@@ -93,6 +93,9 @@ class tick_processor():
         logger.info(f"Account info: {self.dma.account_info}")
         self.init_strategies()
         self.request_suscriptions()
+        # For backtesting - Load historic data
+        if self.mode == 'backtest':
+            self.dma.load_historic_bars(self.required_historic_bars)
         self.dma.start()
         # self.get_historic_bars('EURUSD', 'M1', 20)
 

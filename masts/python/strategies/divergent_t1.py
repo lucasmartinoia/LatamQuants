@@ -17,8 +17,6 @@ class DivergentT1(IStrategy):
 
     def _set_required_bars(self):
         self.required_data = {f"{self.symbol}_{self.timeframe}": 240}
-        if self.timeframe == 'H4':
-            self.required_data[f"{self.symbol}_{'H1'}"] = 240
 
     def _get_signal(self, market_trend):
         result = SignalType.NONE

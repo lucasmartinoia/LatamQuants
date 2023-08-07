@@ -59,6 +59,7 @@ class backtesting():
         self.sorted_tick_moment_list = deque()
         self.bar_data = {}
         self.market_data = {}
+        self.bar_data_subscription_requests = None
 
         # Store parameters
         self.start_datetime = start_datetime
@@ -153,9 +154,10 @@ class backtesting():
                         self.dict_bardata_index[symbol_tf] = bar_data_index
                         bar_data = self.dict_bardata[symbol_tf].iloc[self.dict_bardata_index[symbol_tf]]
                         self.bar_data[symbol_tf] = {'time': bar_data['DateTime'].strftime('%Y-%m-%d %H:%M:%S'), 'open': bar_data['Open'], 'high': bar_data['High'], 'low': bar_data['Low'], 'close': bar_data['Close'], 'tick_volume': bar_data['Volume']}
-                        self.event_handler.on_bar_data(symbol, timeframe, bar_data['DateTime'], bar_data['Open'],
-                                                       bar_data['High'], bar_data['Low'], bar_data['Close'],
-                                                       bar_data['Volume'])
+                        if symbol_tf in self.bar_data_subscription_requests:
+                            self.event_handler.on_bar_data(symbol, timeframe, bar_data['DateTime'], bar_data['Open'],
+                                                           bar_data['High'], bar_data['Low'], bar_data['Close'],
+                                                           bar_data['Volume'])
                     else:
                         self.dict_tickdata_index[symbol_tf] = None
 
@@ -262,6 +264,7 @@ class backtesting():
             result = True
         return result
     def subscribe_symbols_bar_data(self, symbolTimes):
+        self.bar_data_subscription_requests = symbolTimes
         for st in symbolTimes:
             self.load_bardata_file(st)
 
@@ -280,6 +283,13 @@ class backtesting():
                 new_key = f'{symbolTime[0]}_{symbolTime[1]}'
                 self.dict_bardata.setdefault(new_key, df)
                 self.dict_bardata_index.setdefault(new_key, 0)
+
+    def load_historic_bars(self, required_historic_bars):
+        self.bar_data_historic_requests = required_historic_bars.keys()
+        for symbol_tf in self.bar_data_historic_requests:
+            if symbol_tf not in self.dict_bardata.keys():
+                self.load_bardata_file(symbol_tf.split('_'))
+
 
     """Sends a GET_HISTORIC_DATA command to request historic data. 
     
