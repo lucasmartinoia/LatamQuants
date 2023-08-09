@@ -16,7 +16,9 @@ class DivergentT1(IStrategy):
         logger.info(f"DivergentT1({symbol}, {timeframe}, {max_risk_per_trade})")
 
     def _set_required_bars(self):
-        self.required_data = {f"{self.symbol}_{self.timeframe}": 240}
+        self.required_data = {}
+        self.required_data[f"{self.symbol}_{self.timeframe}"] = 240
+        self.required_data[f"{self.symbol}_M1"] = 120
 
     def _get_signal(self, market_trend):
         result = SignalType.NONE
@@ -26,6 +28,7 @@ class DivergentT1(IStrategy):
 
     def _get_market_trend(self):
         result = MarketTrend.UNDEFINED
+
         # TODO: implements _get_market_trend checking EMAS.
 
 

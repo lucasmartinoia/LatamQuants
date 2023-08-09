@@ -258,13 +258,17 @@ class backtesting():
         last_row_datetime = df.iloc[-1]['DateTime']
         if start_time < first_row_datetime:
             logger.error(f"start_time ({start_time}) is lower than first row datetime ({first_row_datetime})")
+            raise Exception(f"start_time ({start_time}) is lower than first row datetime ({first_row_datetime})")
+            exit()
         elif end_time > last_row_datetime:
             logger.error(f"end_time ({end_time}) is higher than last row datetime ({last_row_datetime})")
+            raise Exception(f"end_time ({end_time}) is higher than last row datetime ({last_row_datetime})")
+            exit()
         else:
             result = True
         return result
     def subscribe_symbols_bar_data(self, symbolTimes):
-        self.bar_data_subscription_requests = symbolTimes
+        self.bar_data_subscription_requests = [f"{pair[0]}_{pair[1]}" for pair in symbolTimes]
         for st in symbolTimes:
             self.load_bardata_file(st)
 
@@ -314,13 +318,13 @@ class backtesting():
                           param_end=datetime.utcnow().timestamp()):
         start = datetime.fromtimestamp(param_start)
         end = datetime.fromtimestamp(param_end)
-        logger.debug(f"-> get_historic_data({symbol}, {time_frame}, {start}, {end})")
+        #logger.debug(f"-> get_historic_data({symbol}, {time_frame}, {start}, {end})")
         symbol_tf = f"{symbol}_{time_frame}"
         if symbol_tf in self.dict_bardata:
             if self.check_data_dates(self.dict_bardata[symbol_tf], start, end):
                 #logger.info(self.dict_bardata[symbol_tf])
                 result = convert_bar_dataframe_to_dict(self.dict_bardata[symbol_tf], start, end)
-                logger.info(f"get_historic_data() -> {result}")
+                #logger.info(f"get_historic_data() -> {result}")
                 self.event_handler.on_historic_data(symbol, time_frame, result)
         else:
             logger.error(f"No historic data for {symbol} {time_frame}!")

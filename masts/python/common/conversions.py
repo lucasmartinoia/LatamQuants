@@ -72,7 +72,6 @@ def get_timeframe_delta(timeframe):
 
 
 def get_bar_data_clean_date(dt, timeframe):
-    logger.info(f"get_bar_data_clean_date() -> {dt} {timeframe}")
     freq = int(timeframe[1:])
     if timeframe[0] == 'D':
         clean_date = datetime(dt.year, dt.month, (dt.day - (dt.day % freq)))
@@ -85,7 +84,7 @@ def get_bar_data_clean_date(dt, timeframe):
 
 
 def convert_periods_to_datetime_range(periods, timeframe, end_datetime):
-    possible_missing_periods_fix = 100
+    possible_missing_periods_fix = 50
     # Check if there are Saturdays or Sundays between start and end datetimes
     timeframe_delta = get_timeframe_delta(timeframe)
     # Get clean data - 1 period to avoid current bar.
