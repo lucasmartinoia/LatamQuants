@@ -45,8 +45,6 @@ class backtesting():
 
         # Init variables
         self.dict_tickdata = {}
-        self.dict_tickdata_index = {}
-        self.dict_tickdata_index_prev = {}
         self.dict_bardata = {}
         self.dict_bardata_index = {}
         self.dict_bardata_index_prev = {}
@@ -60,6 +58,8 @@ class backtesting():
         self.bar_data = {}
         self.market_data = {}
         self.bar_data_subscription_requests = None
+        self.main_symbol_tfs = None
+        self.current_datetime = start_datetime
 
         # Store parameters
         self.start_datetime = start_datetime
@@ -78,57 +78,59 @@ class backtesting():
         self.ACTIVE = True
         self.START = False
 
-    # Function to insert new row into the deque maintaining sorted order
-    def insert_moment_tick_in_list(self, row):
-        index = bisect.bisect_left(self.sorted_tick_moment_list, row)
-        self.sorted_tick_moment_list.insert(index, row)
-
     """START can be used to check if the client has been initialized.  
     """
 
     def start(self):
         self.START = True
         init = 1
-        symbols = self.dict_tickdata.keys()
 
         # Main backtesting loop - multi symbol in parallel
         while self.START:
-            self.sorted_tick_moment_list.clear()
+            process = False
 
             if init == 1:
-                # Set indexes for each tick_data the first time
-                for symbol in symbols:
-                    symbol_index = self.get_tick_data_index_for_date(self.dict_tickdata[symbol], self.start_datetime)
-                    self.dict_tickdata_index[symbol] = symbol_index
-                    self.dict_tickdata_index_prev[symbol] = symbol_index
-                    if symbol_index is not None:  # Only consider symbols with tick data
-                        symbol_datetime = self.GetCurrentTime(symbol)
-                        self.insert_moment_tick_in_list((symbol_datetime, symbol_index, symbol))
+                # Set indexes for each bar_data the first time
+                for symbol_tf in self.main_symbol_tfs:
+                    symbol, timeframe = self.extract_symbol_and_timeframe(symbol_tf)
+                    bar_data_index = self.get_bar_data_index_for_date(self.dict_bardata[symbol_tf], self.start_datetime,
+                                                                      timeframe)
+                    self.dict_bardata_index[symbol_tf] = bar_data_index
+                    self.dict_bardata_index_prev[symbol_tf] = bar_data_index
+                    if bar_data_index is not None and init == 1:
+                        self.current_datetime = get_bar_data_clean_date(self.start_datetime, timeframe)
+                        process = True
+                        self.process_symbol_tf_main_bar(symbol_tf)
                     init = 0
             else:  # Increment indexes
-                for symbol in self.dict_tickdata_index.keys():
-                    symbol_index = self.dict_tickdata_index[symbol]
-                    if symbol_index is not None and self.dict_tickdata[symbol].shape[0] > (symbol_index + 1):
-                        self.dict_tickdata_index_prev[symbol] = symbol_index
+                for symbol_tf in self.main_symbol_tfs:
+                    symbol_index = self.dict_bardata_index[symbol_tf]
+                    if symbol_index is not None and self.dict_bardata[symbol_tf].shape[0] > (symbol_index + 1):
+                        self.dict_bardata_index_prev[symbol_tf] = symbol_index
                         symbol_index += 1
-                        self.dict_tickdata_index[symbol] = symbol_index
-                        symbol_datetime = self.GetCurrentTime(symbol)
-                        self.insert_moment_tick_in_list((symbol_datetime, symbol_index, symbol))
+                        self.dict_bardata_index[symbol_tf] = symbol_index
+                        self.current_datetime = self.dict_bardata[symbol_tf]['DateTime'][symbol_index]
+                        process = True
+                        self.process_symbol_tf_main_bar(symbol_tf)
                     elif symbol_index is not None:
-                        self.dict_tickdata_index[symbol] = None
-            if len(self.sorted_tick_moment_list) > 0:
-                for symbol_datetime, symbol_index, symbol in self.sorted_tick_moment_list:
-                    # Update market_data
-                    self.market_data[symbol] = {'bid': self.dict_tickdata[symbol].iloc[symbol_index]['Bid'], 'ask': self.dict_tickdata[symbol].iloc[symbol_index]['Ask'], 'tick_value': self.dict_tickdata[symbol].iloc[symbol_index]['Volume']}
-                    # 1. Update orders in the broker
-                    self.update_orders(symbol)
-                    # 2. Trigger tick data events
-                    self.event_handler.on_tick(symbol, self.dict_tickdata[symbol].iloc[symbol_index]['Bid'],
-                                               self.dict_tickdata[symbol].iloc[symbol_index]['Ask'])
-                    # 3. Trigger bar data events
-                    self.update_bar_datas(symbol)
-            else:
-                self.START = False
+                        self.dict_bardata_index[symbol_tf] = None
+            self.START = process
+
+        self.ACTIVE = False
+
+    def process_symbol_tf_main_bar(self, symbol_tf):
+        symbol, timeframe = self.extract_symbol_and_timeframe(symbol_tf)
+        # TODO: Update market_data
+        # self.market_data[symbol] = {'bid': self.dict_tickdata[symbol].iloc[symbol_index]['Bid'],
+        #                             'ask': self.dict_tickdata[symbol].iloc[symbol_index]['Ask'],
+        #                             'tick_value': self.dict_tickdata[symbol].iloc[symbol_index]['Volume']}
+        # Update orders in the broker
+        self.update_orders(symbol)
+        # TODO: Trigger tick data events
+        # self.event_handler.on_tick(symbol, self.dict_tickdata[symbol].iloc[symbol_index]['Bid'],
+        #                            self.dict_tickdata[symbol].iloc[symbol_index]['Ask'])
+        # Trigger bar data events
+        self.update_bar_datas(symbol, symbol_tf)
 
     def extract_symbol_and_timeframe(self, input_string):
         parts = input_string.split('_')
@@ -138,28 +140,36 @@ class backtesting():
         symbol, timeframe = parts
         return symbol, timeframe
 
-    def update_bar_datas(self, param_symbol):
+    def update_bar_datas(self, param_symbol, main_symbol_tf):
+        # Get current main data bar info
+        _, main_timeframe = self.extract_symbol_and_timeframe(main_symbol_tf)
+        bar_data = self.dict_bardata[main_symbol_tf]
+        bar_data_index = self.dict_bardata_index[main_symbol_tf]
+        # Trigger on_bar_data event
+        self.event_handler.on_bar_data(param_symbol, main_timeframe, bar_data['DateTime'][bar_data_index], bar_data['Open'][bar_data_index],
+                                       bar_data['High'][bar_data_index], bar_data['Low'][bar_data_index], bar_data['Close'][bar_data_index],
+                                       bar_data['Volume'][bar_data_index])
+        # Process all data bars with same symbol but higher timeframe
         for symbol_tf in self.dict_bardata.keys():
             symbol, timeframe = self.extract_symbol_and_timeframe(symbol_tf)
-            if symbol == param_symbol:
-                prev_datetime = self.dict_tickdata[param_symbol].iloc[self.dict_tickdata_index_prev[param_symbol]][
-                    'DateTime']
-                curr_datetime = self.dict_tickdata[param_symbol].iloc[self.dict_tickdata_index[param_symbol]][
-                    'DateTime']
+            if symbol_tf != main_symbol_tf and timeframe < main_timeframe: # Only set index for higher timeframes.
+                if symbol == param_symbol:
+                    prev_datetime = self.dict_bardata[main_symbol_tf].iloc[self.dict_bardata_index_prev[main_symbol_tf]][
+                        'DateTime']
+                    curr_datetime = self.dict_bardata[main_symbol_tf].iloc[self.dict_bardata_index[main_symbol_tf]][
+                        'DateTime']
 
-                if self.has_bar_data_changed(prev_datetime, curr_datetime, timeframe):
-                    bar_data_index = self.get_bar_data_index_for_date(self.dict_bardata[symbol_tf], curr_datetime,
-                                                                      timeframe)
-                    if bar_data_index is not None and bar_data_index > self.dict_bardata_index[symbol_tf]:
-                        self.dict_bardata_index[symbol_tf] = bar_data_index
-                        bar_data = self.dict_bardata[symbol_tf].iloc[self.dict_bardata_index[symbol_tf]]
-                        self.bar_data[symbol_tf] = {'time': bar_data['DateTime'].strftime('%Y-%m-%d %H:%M:%S'), 'open': bar_data['Open'], 'high': bar_data['High'], 'low': bar_data['Low'], 'close': bar_data['Close'], 'tick_volume': bar_data['Volume']}
-                        if symbol_tf in self.bar_data_subscription_requests:
-                            self.event_handler.on_bar_data(symbol, timeframe, bar_data['DateTime'], bar_data['Open'],
-                                                           bar_data['High'], bar_data['Low'], bar_data['Close'],
-                                                           bar_data['Volume'])
-                    else:
-                        self.dict_tickdata_index[symbol_tf] = None
+                    if self.has_bar_data_changed(prev_datetime, curr_datetime, timeframe):
+                        bar_data_index = self.get_bar_data_index_for_date(self.dict_bardata[symbol_tf], curr_datetime,
+                                                                          timeframe)
+                        if bar_data_index is not None and bar_data_index > self.dict_bardata_index[symbol_tf]:
+                            self.dict_bardata_index[symbol_tf] = bar_data_index
+                            bar_data = self.dict_bardata[symbol_tf].iloc[self.dict_bardata_index[symbol_tf]]
+                            self.bar_data[symbol_tf] = {'time': bar_data['DateTime'].strftime('%Y-%m-%d %H:%M:%S'), 'open': bar_data['Open'], 'high': bar_data['High'], 'low': bar_data['Low'], 'close': bar_data['Close'], 'tick_volume': bar_data['Volume']}
+                            if symbol_tf in self.bar_data_subscription_requests:
+                                self.event_handler.on_bar_data(symbol, timeframe, bar_data['DateTime'], bar_data['Open'],
+                                                               bar_data['High'], bar_data['Low'], bar_data['Close'],
+                                                               bar_data['Volume'])
 
     def has_bar_data_changed(self, previous_datetime, current_datetime, timeframe):
         if previous_datetime is None or current_datetime is None:
@@ -251,6 +261,9 @@ class backtesting():
             if self.check_data_dates(df, self.start_datetime, self.end_datetime):
                 self.dict_tickdata.setdefault(symbol, df)
                 self.dict_tickdata.setdefault(symbol, 0)
+
+    def set_main_symbol_tfs(self, symbol_tfs):
+        self.main_symbol_tfs = symbol_tfs
 
     def check_data_dates(self, df, start_time, end_time):
         result = False
@@ -404,7 +417,9 @@ class backtesting():
     def execute_order(self, ticket_no, trade_data, new=False):
         order_type = trade_data.get('type')
         order_symbol = trade_data['symbol']
-        tick_data = self.dict_tickdata[order_symbol].iloc[self.dict_tickdata_index[order_symbol]]
+        # TODO: Get tick data for currentdatetime.
+        #tick_data = self.dict_tickdata[order_symbol].iloc[self.dict_tickdata_index[order_symbol]]
+        tick_data = None
         to_inform = new
         if order_type.endswith('limit') or order_type.endswith('stop'):
             # programmed order
@@ -472,7 +487,9 @@ class backtesting():
     def update_order(self, ticket_no, trade_data):
         order_type = trade_data.get('type')
         order_symbol = trade_data.get('symbol')
-        tick_data = self.dict_tickdata[order_symbol][self.dict_tickdata_index]
+        # TODO: Get tick data for current datetime.
+        #tick_data = self.dict_tickdata[order_symbol][self.dict_tickdata_index]
+        tick_data = None
         to_inform = False
         if order_type == 'buy':
             if trade_data.get('SL') > 0.0:
@@ -611,9 +628,13 @@ class backtesting():
                 self.dict_trades[ticket]['close_time'] = self.GetCurrentTime(symbol)
                 close_price = 0.0
                 if trade_data['type'] in self.buy_order_types:
-                    close_price = self.dict_tickdata[symbol][self.dict_tickdata_index[symbol]]['Bid']
+                    # TODO: Define bid price for closing price.
+                    #close_price = self.dict_tickdata[symbol][self.dict_tickdata_index[symbol]]['Bid']
+                    close_price = None
                 else:
-                    close_price = self.dict_tickdata[symbol][self.dict_tickdata_index[symbol]]['Ask']
+                    # TODO: Define ask price for closing price.
+                    #close_price = self.dict_tickdata[symbol][self.dict_tickdata_index[symbol]]['Ask']
+                    close_price = None
                 self.dict_trades[ticket]['close_price'] = close_price
                 result = True
         elif trade_data['status'] == OrderStatus.PENDING:
@@ -630,8 +651,8 @@ class backtesting():
 
         return result
 
-    def GetCurrentTime(self, symbol):
-        result = self.dict_tickdata[symbol].iloc[self.dict_tickdata_index[symbol]]['DateTime']
+    def GetCurrentTime(self):
+        return self.current_datetime
         return result
 
     """Sends a CLOSE_ALL_ORDERS command to close all orders.

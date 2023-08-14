@@ -106,6 +106,7 @@ class tick_processor():
         return result
 
     def init_strategies(self):
+        main_strategy_symbol_tfs = []
         for strategy_name, strategy_params in self.strategies_info.items():
             instance = self.get_strategy_instance(strategy_name, strategy_params)
             self.strategies_instances[instance.id] = {'instance': instance, 'params': strategy_params}
@@ -115,6 +116,7 @@ class tick_processor():
             self.add_strategy_required_suscription(symbol_tf, instance.id)
             symbol_tf = f"{strategy_params['symbol']}_{strategy_params['timeframe']}"
             self.add_strategy_required_suscription(symbol_tf, instance.id)
+            main_strategy_symbol_tfs.append(symbol_tf)
 
             # Add to required historic data
             strategy_required_hist_data = instance.required_data
@@ -127,6 +129,8 @@ class tick_processor():
                 else:
                     self.required_historic_bars[hist_symbol_tf] = {'max_bars': hist_bars,
                                                                    'strategies': {instance.id: hist_bars}}
+        if self.mode == "backtest":
+            self.dma.main_symbol_tfs = main_strategy_symbol_tfs
 
     def add_strategy_required_suscription(self, symbol_tf, strategy_id):
         if symbol_tf in self.required_suscriptions:
@@ -153,7 +157,7 @@ class tick_processor():
         if self.mode != 'live':
             delta_fix = 0
         if current_datetime == None:
-            current_datetime = self.get_current_datetime(symbol)
+            current_datetime = self.get_current_datetime()
         start_datetime, end_datetime = convert_periods_to_datetime_range(periods, timeframe, current_datetime)
         end_datetime = end_datetime + timedelta(hours=delta_fix)
         # logger.debug(f'get_historic_bars() -> {symbol} {timeframe} {periods}')
@@ -161,12 +165,12 @@ class tick_processor():
         symbol_tf = f"{symbol}_{timeframe}"
         self.dma.get_historic_data(symbol, timeframe, start_datetime.timestamp(), end_datetime.timestamp())
 
-    def get_current_datetime(self, symbol=None):
+    def get_current_datetime(self):
         result = None
         if self.mode == "live":
             result = datetime.utcnow() + timedelta(hours=self.time_delta_hours)
         else:
-            result = self.dma.GetCurrentTime(symbol)
+            result = self.dma.GetCurrentTime()
         return result
 
     def validate_parameters(self, mode,
@@ -252,7 +256,7 @@ class tick_processor():
         #     self.stop_trading = True
 
     def request_historic_data(self, symbol, time_frame):
-        self.historic_request_last_timestamp[symbol] = self.get_current_datetime(symbol).timestamp()
+        self.historic_request_last_timestamp[symbol] = self.get_current_datetime().timestamp()
         keys_symbol_tf = [key for key, value in self.required_historic_bars.items() if key.startswith(symbol)]
         for key_symbol_tf in keys_symbol_tf:
             key_symbol, key_tf = key_symbol_tf.split('_')
@@ -278,7 +282,7 @@ class tick_processor():
         # Store data.
         self.historic_data[f'{symbol}_{time_frame}'] = {'timestamp': self.historic_request_last_timestamp,
                                                         'data': data}
-        logger.debug(f'on_historic_data() => {symbol}, {time_frame}, {len(data)} bars, last bar datetime -> {list(data.keys())[-1]}, current datetime -> {self.get_current_datetime(symbol)}')
+        logger.debug(f'on_historic_data() => {symbol}, {time_frame}, {len(data)} bars, last bar datetime -> {list(data.keys())[-1]}, current datetime -> {self.get_current_datetime()}')
         self.send_historic_data_to_strategies(symbol)
 
         # # Example about how to call an indicator.
