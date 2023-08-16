@@ -280,7 +280,7 @@ class tick_processor():
         # Cut bars to only required ones.
         data = get_lasts_from_dictionary(data, self.required_historic_bars[symbol_tf]['max_bars'])
         # Store data.
-        self.historic_data[f'{symbol}_{time_frame}'] = {'timestamp': self.historic_request_last_timestamp,
+        self.historic_data[f'{symbol}_{time_frame}'] = {'timestamp': self.historic_request_last_timestamp[symbol],
                                                         'data': data}
         logger.debug(f'on_historic_data() => {symbol}, {time_frame}, {len(data)} bars, last bar datetime -> {list(data.keys())[-1]}, current datetime -> {self.get_current_datetime()}')
         self.send_historic_data_to_strategies(symbol)

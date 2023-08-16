@@ -120,15 +120,12 @@ class backtesting():
 
     def process_symbol_tf_main_bar(self, symbol_tf):
         symbol, timeframe = self.extract_symbol_and_timeframe(symbol_tf)
-        # TODO: Update market_data
-        # self.market_data[symbol] = {'bid': self.dict_tickdata[symbol].iloc[symbol_index]['Bid'],
-        #                             'ask': self.dict_tickdata[symbol].iloc[symbol_index]['Ask'],
-        #                             'tick_value': self.dict_tickdata[symbol].iloc[symbol_index]['Volume']}
+        # tick_data = self.get_tick_data_for_date_range(symbol)
+        # self.market_data[symbol] = {'bid': tick_data['Bid'],
+        #                             'ask': tick_data['Ask'],
+        #                             'tick_value': tick_data['Volume']}
         # Update orders in the broker
         self.manage_orders(symbol, symbol_tf)
-        # TODO: Trigger tick data events
-        # self.event_handler.on_tick(symbol, self.dict_tickdata[symbol].iloc[symbol_index]['Bid'],
-        #                            self.dict_tickdata[symbol].iloc[symbol_index]['Ask'])
         # Trigger bar data events
         self.update_bar_datas(symbol, symbol_tf)
 
@@ -550,11 +547,12 @@ class backtesting():
         self.event_handler.on_order_event()
 
     def manage_orders(self, symbol, symbol_tf):
-        orders = [(ticket_no, trade_data) for ticket_no, trade_data in self.dict_trades.items() if
-                       trade_data.get('symbol') == symbol and
-                       trade_data.get('status') in [OrderStatus.OPEN, OrderStatus.PENDING]]
-        for ticket_no, trade_data in orders:
-            self._execute_order(self, ticket_no, trade_data)
+        if len(self.dict_trades) > 0:
+            orders = [(ticket_no, trade_data) for ticket_no, trade_data in self.dict_trades.items() if
+                           trade_data.get('symbol') == symbol and
+                           trade_data.get('status') in [OrderStatus.OPEN, OrderStatus.PENDING]]
+            for ticket_no, trade_data in orders:
+                self._execute_order(self, ticket_no, trade_data)
 
     def _manage_order(self, ticket_no, trade_data, execution_datetime, bar_low_price, bar_high_price):
         order_type = trade_data.get('type')
@@ -597,9 +595,7 @@ class backtesting():
     def update_order_on_tick(self, ticket_no, trade_data):
         order_type = trade_data.get('type')
         order_symbol = trade_data.get('symbol')
-        # TODO: Get tick data for current datetime.
-        #tick_data = self.dict_tickdata[order_symbol][self.dict_tickdata_index]
-        tick_data = None
+        tick_data = self.get_tick_data_for_date_range(order_symbol)
         to_inform = False
         if order_type == 'buy':
             if trade_data.get('SL') > 0.0:
@@ -735,21 +731,18 @@ class backtesting():
 
             if to_close:
                 self.dict_trades[ticket]['status'] = OrderStatus.CLOSED
-                self.dict_trades[ticket]['close_time'] = self.GetCurrentTime(symbol)
+                self.dict_trades[ticket]['close_time'] = self.current_datetime
                 close_price = 0.0
+                tick_data = self.get_tick_data_for_date_range(symbol)
                 if trade_data['type'] in self.buy_order_types:
-                    # TODO: Define bid price for closing price.
-                    #close_price = self.dict_tickdata[symbol][self.dict_tickdata_index[symbol]]['Bid']
-                    close_price = None
+                    close_price = tick_data['bid']
                 else:
-                    # TODO: Define ask price for closing price.
-                    #close_price = self.dict_tickdata[symbol][self.dict_tickdata_index[symbol]]['Ask']
-                    close_price = None
+                    close_price = tick_data['ask']
                 self.dict_trades[ticket]['close_price'] = close_price
                 result = True
         elif trade_data['status'] == OrderStatus.PENDING:
             self.dict_trades[ticket]['status'] = OrderStatus.CANCELED
-            self.dict_trades[ticket]['close_time'] = self.GetCurrentTime(symbol)
+            self.dict_trades[ticket]['close_time'] = self.current_datetime
             result = True
 
         if result:
