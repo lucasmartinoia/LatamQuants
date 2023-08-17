@@ -120,10 +120,10 @@ class backtesting():
 
     def process_symbol_tf_main_bar(self, symbol_tf):
         symbol, timeframe = self.extract_symbol_and_timeframe(symbol_tf)
-        # tick_data = self.get_tick_data_for_date_range(symbol)
-        # self.market_data[symbol] = {'bid': tick_data['Bid'],
-        #                             'ask': tick_data['Ask'],
-        #                             'tick_value': tick_data['Volume']}
+        bar_data = self.dict_bardata[symbol_tf].iloc[[self.dict_bardata_index[symbol_tf]]]
+        self.market_data[symbol] = {'bid': bar_data['Open'].iloc[0],
+                                    'ask': bar_data['Open'].iloc[0],
+                                    'tick_value': 1}
         # Update orders in the broker
         self.manage_orders(symbol, symbol_tf)
         # Trigger bar data events
@@ -390,10 +390,22 @@ class backtesting():
                    expiration=0):
 
         result = False
+
+        # Define price for market orders
+        if price == 0:
+            if order_type == 'buy':
+                price = self.market_data[symbol]['ask']
+            elif order_type == 'sell':
+                price = self.market_data[symbol]['bid']
+            else:
+                logger.error(f'open_order() -> price cannot be 0 for not {order_type} order type')
+                raise Exception(f'open_order() -> price cannot be 0 for not {order_type} order type')
+                exit()
+
         new_order_data = {'ticket_no': 0, 'symbol': symbol, 'type': order_type,
                           'lots': lots,
                           'price': price, 'SL': stop_loss, 'TP': take_profit, 'magic': magic,
-                          'comment': comment, 'expiration': expiration, 'open_time': self.GetCurrentTime(symbol),
+                          'comment': comment, 'expiration': expiration, 'open_time': self.GetCurrentTime(),
                           'close_time': None, 'commission': 0.0, 'taxes': 0.0, 'swap': 0.0,
                           'pnl': 0.0, 'status': OrderStatus.PENDING, 'open_price': 0.0,
                           'close_price': 0.0}
@@ -408,9 +420,9 @@ class backtesting():
     def execute_order(self, ticket_no, trade_data):
         order_type = trade_data.get('type')
         if order_type.endswith('limit') or order_type.endswith('stop'):
-            self._execute_order(self, ticket_no, trade_data)
+            self._execute_order(ticket_no, trade_data)
         else:  # Market orders input just now
-            self.execute_order_on_tick(self, ticket_no, trade_data)
+            self.execute_order_on_tick(ticket_no, trade_data)
 
     def _get_main_tf(self, symbol):
         return next((string for string in self.main_symbol_tfs if string.startswith(symbol)), None)
@@ -508,12 +520,12 @@ class backtesting():
             order_type = trade_data.get('type')
             order_symbol = trade_data['symbol']
             tick_data = self.get_tick_data_for_date_range(order_symbol, self.current_datetime)
-            self._open_order(ticket_no, trade_data, tick_data['DateTime'], tick_data['bid'], tick_data['ask'])
+            self._open_order(ticket_no, trade_data, tick_data['DateTime'].iloc[0], tick_data['Bid'].iloc[0], tick_data['Ask'].iloc[0])
 
     def _open_order(self, ticket_no, trade_data, execution_datetime, market_bid_price, market_ask_price):
         order_type = trade_data.get('type')
         order_symbol = trade_data['symbol']
-        if order_type.starswith('buy'):
+        if order_type.startswith('buy'):
             trade_data['type'] = 'buy'
             trade_data['open_price'] = market_ask_price
         else:
@@ -552,7 +564,7 @@ class backtesting():
                            trade_data.get('symbol') == symbol and
                            trade_data.get('status') in [OrderStatus.OPEN, OrderStatus.PENDING]]
             for ticket_no, trade_data in orders:
-                self._execute_order(self, ticket_no, trade_data)
+                self._execute_order(ticket_no, trade_data)
 
     def _manage_order(self, ticket_no, trade_data, execution_datetime, bar_low_price, bar_high_price):
         order_type = trade_data.get('type')

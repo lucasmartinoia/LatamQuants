@@ -4,6 +4,9 @@ from python.strategies.istrategy import IStrategy, SignalType, MarketTrend
 from python.indicators.macd_platinum_v2 import macd_platinum_v2
 from python.common.conversions import convert_historic_bars_element_to_array, convert_periods_to_datetime_range, \
     get_lasts_from_dictionary
+from python.api.dwx_client import dwx_client
+from python.backtesting.backtesting import backtesting
+
 class DivergentT1(IStrategy):
     MAGIC_NO = 1
 
@@ -23,7 +26,11 @@ class DivergentT1(IStrategy):
 
     def _get_signal(self, market_trend):
         result = SignalType.NONE
-        # TODO: implements _get_signal
+        if market_trend == MarketTrend.BULL:
+            result = SignalType.BUY
+        elif market_trend == MarketTrend.BEAR:
+            result = SignalType.SELL
+
         logger.debug(f"_get_signal() -> {result}")
         return result
 
@@ -74,8 +81,19 @@ class DivergentT1(IStrategy):
         return result
 
     def _open_orders(self, signal):
-        # TODO: implements _open_orders -> create orders for the strategy.
-        dummy = 1
+        sltp_margen = 0.0040
+        if signal == SignalType.BUY:
+            price = self.smart_trader.dma.market_data[self.symbol]['ask']
+            stop_loss = price - sltp_margen
+            take_profit = price + sltp_margen
+            self.smart_trader.dma.open_order(symbol=self.symbol, order_type='buy', lots=0.5, price=price,
+                                             stop_loss=stop_loss, take_profit=take_profit)
+        elif signal == SignalType.SELL:
+            price = self.smart_trader.dma.market_data[self.symbol]['bid']
+            stop_loss = price + sltp_margen
+            take_profit = price - sltp_margen
+            self.smart_trader.dma.open_order(symbol=self.symbol, order_type='sell', lots=0.5, price=price,
+                                             stop_loss=stop_loss, take_profit=take_profit)
 
     def _validate_historic_data(self, historic_data):
         # TODO: validate historic data
