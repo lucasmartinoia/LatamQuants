@@ -411,6 +411,7 @@ class backtesting():
                           'close_price': 0.0}
         if self.validate_order(new_order_data):
             self.last_ticket_no = self.last_ticket_no + 1
+            new_order_data['ticket_no'] = self.last_ticket_no
             self.dict_trades.setdefault(self.last_ticket_no, new_order_data)
             self.execute_order(self.last_ticket_no, new_order_data)
             result = True
@@ -430,7 +431,7 @@ class backtesting():
         result = False
         main_symbol_tf = self._get_main_tf(trade_data['symbol'])
         if symbol_tf is None:
-            bar_data = self.dict_bardata[main_symbol_tf][self.dict_bardata_index[main_symbol_tf]]
+            bar_data = self.dict_bardata[main_symbol_tf].iloc[self.dict_bardata_index[main_symbol_tf]]
             self._execute_order(ticket_no, trade_data, main_symbol_tf, bar_data)
         else:
             affects = self._order_affected_by_bar(trade_data, bar_data)
@@ -438,7 +439,7 @@ class backtesting():
                 if trade_data['status'] == OrderStatus.PENDING:
                     self._open_order(ticket_no, trade_data, bar_data['DateTime'], trade_data['price'], trade_data['price'])
                 elif trade_data['status'] == OrderStatus.OPEN:
-                    self._manage_order(ticket_no, trade_data, bar_data['DateTime'], bar_data['low'], bar_data['high'])
+                    self._manage_order(ticket_no, trade_data, bar_data['DateTime'], bar_data['Low'], bar_data['High'])
                 result = True
             elif 1 < affects:
                 if main_symbol_tf == symbol_tf:
@@ -492,13 +493,13 @@ class backtesting():
     def _order_affected_by_bar(self, trade_data, bar_data):
         affected_times = 0
         if trade_data['type'].endswith('limit') or trade_data['type'].endswith('stop'):
-            if bar_data['low'] >= trade_data['price'] <= bar_data['high']:
+            if bar_data['Low'] >= trade_data['price'] <= bar_data['High']:
                 affected_times += 1
 
         if affected_times == 1 or trade_data['type'] in ['buy','sell']:
-            if bar_data['low'] >= trade_data['stop_loss'] <= bar_data['high']:
+            if bar_data['Low'] >= trade_data['SL'] <= bar_data['High']:
                 affected_times += 1
-            if bar_data['low'] >= trade_data['take_profit'] <= bar_data['high']:
+            if bar_data['Low'] >= trade_data['TP'] <= bar_data['High']:
                 affected_times += 1
         return affected_times
 
