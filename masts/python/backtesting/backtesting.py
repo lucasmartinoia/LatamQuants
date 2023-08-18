@@ -549,24 +549,6 @@ class backtesting():
                                        'message': f'Successfully sent order {ticket_no}: {order_symbol}, {trade_data["type"]}, {trade_data["lots"]}, {trade_data["open_price"]}'})
         self.event_handler.on_order_event()
 
-    def _manage_order(self, ticket_no, trade_data, execution_datetime, bar_low_price, bar_high_price):
-        order_type = trade_data.get('type')
-        order_symbol = trade_data['symbol']
-        if order_type.starswith('buy'):
-            trade_data['type'] = 'buy'
-            trade_data['open_price'] = market_ask_price
-        else:
-            trade_data['type'] = 'sell'
-            trade_data['open_price'] = market_bid_price
-
-        trade_data['open_time'] = execution_datetime
-        trade_data['status'] = OrderStatus.OPEN
-        self.open_orders[ticket_no] = trade_data
-        # Trigger events
-        self.event_handler.on_message({'type': 'INFO',
-                                       'message': f'Successfully sent order {ticket_no}: {order_symbol}, {trade_data["type"]}, {trade_data["lots"]}, {trade_data["open_price"]}'})
-        self.event_handler.on_order_event()
-
     def manage_orders(self, symbol, symbol_tf):
         if len(self.dict_trades) > 0:
             orders = [(ticket_no, trade_data) for ticket_no, trade_data in self.dict_trades.items() if
