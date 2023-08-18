@@ -87,13 +87,13 @@ class DivergentT1(IStrategy):
             stop_loss = price - sltp_margen
             take_profit = price + sltp_margen
             self.smart_trader.dma.open_order(symbol=self.symbol, order_type='buy', lots=0.5, price=price,
-                                             stop_loss=stop_loss, take_profit=take_profit)
+                                             stop_loss=stop_loss, take_profit=take_profit, magic=self.magic_no)
         elif signal == SignalType.SELL:
             price = self.smart_trader.dma.market_data[self.symbol]['bid']
             stop_loss = price + sltp_margen
             take_profit = price - sltp_margen
             self.smart_trader.dma.open_order(symbol=self.symbol, order_type='sell', lots=0.5, price=price,
-                                             stop_loss=stop_loss, take_profit=take_profit)
+                                             stop_loss=stop_loss, take_profit=take_profit, magic=self.magic_no)
 
     def _validate_historic_data(self, historic_data):
         # TODO: validate historic data

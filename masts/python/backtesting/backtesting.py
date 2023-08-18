@@ -429,6 +429,8 @@ class backtesting():
         return next((string for string in self.main_symbol_tfs if string.startswith(symbol)), None)
     def _execute_order(self, ticket_no, trade_data, symbol_tf=None, bar_data=None):
         result = False
+        if ticket_no == 34:
+            dummy = 1
         main_symbol_tf = self._get_main_tf(trade_data['symbol'])
         if symbol_tf is None:
             bar_data = self.dict_bardata[main_symbol_tf].iloc[self.dict_bardata_index[main_symbol_tf]]
@@ -452,13 +454,19 @@ class backtesting():
                         self.dict_bardata[symbol_tf_m1]['DateTime'] < end_datetime)]
 
                     pending_affects = affects
-                    for bar_1m in bars_1m:
+                    bar_1m_index = 0
+                    while bar_1m_index < len(bars_1m) and not result:
+                        bar_1m = bars_1m.iloc[bar_1m_index]
                         result1 = self._execute_order(ticket_no, trade_data, symbol_tf_m1, bar_1m)
                         if result1:
                             pending_affects -= 1
                             if pending_affects == 0:
                                 result = True
-                                break
+                            else:
+                                bar_1m_index += 1
+                        else:
+                            bar_1m_index += 1
+
                     if not result:
                         logger.error(
                             f'_execute_pending_order() -> Loop in M1 for {symbol_tf}, bar_data = {bar_data} continues with pending actions')
@@ -493,13 +501,13 @@ class backtesting():
     def _order_affected_by_bar(self, trade_data, bar_data):
         affected_times = 0
         if trade_data['type'].endswith('limit') or trade_data['type'].endswith('stop'):
-            if bar_data['Low'] >= trade_data['price'] <= bar_data['High']:
+            if bar_data['Low'] <= trade_data['price'] <= bar_data['High']:
                 affected_times += 1
 
         if affected_times == 1 or trade_data['type'] in ['buy','sell']:
-            if bar_data['Low'] >= trade_data['SL'] <= bar_data['High']:
+            if bar_data['Low'] <= trade_data['SL'] <= bar_data['High']:
                 affected_times += 1
-            if bar_data['Low'] >= trade_data['TP'] <= bar_data['High']:
+            if bar_data['Low'] <= trade_data['TP'] <= bar_data['High']:
                 affected_times += 1
         return affected_times
 
