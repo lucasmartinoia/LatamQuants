@@ -7,10 +7,12 @@ from traceback import print_exc
 from datetime import datetime, timedelta
 from python.common.logging_config import logger
 from python.common.conversions import convert_bar_dataframe_to_dict, get_timeframe_delta, get_bar_data_clean_date
+from python.common.graphics import generate_trade_chart
 import pandas as pd
 from enum import Enum
 from collections import deque
-import bisect
+from forex_python.converter import CurrencyRates
+from decimal import Decimal
 
 
 class OrderStatus(Enum):
@@ -32,7 +34,10 @@ class backtesting():
                  back_test_directory_path=None,
                  balance=100000.0,
                  currency='USD',
-                 leverage=33):
+                 leverage=33,
+                 execution_commission_rate=0.005,
+                 back_test_spread_pips=1.0
+                 ):
 
         logger.info("backtesting.__init__()")
 
@@ -59,6 +64,7 @@ class backtesting():
         self.market_data = {}
         self.bar_data_subscription_requests = None
         self.main_symbol_tfs = None
+        self.symbol_specs = None
         self.current_datetime = start_datetime
 
         # Store parameters
@@ -67,6 +73,8 @@ class backtesting():
         self.event_handler = event_handler
         self.account_info = {'name': 'backtesting_mode', 'number': 1111, 'currency': currency, 'leverage': leverage,
                              'free_margin': balance, 'balance': balance, 'equity': balance}
+        self.execution_commission_rate = execution_commission_rate
+        self.back_test_spread_pips = back_test_spread_pips
 
         # implements
         # self.open_orders # Current open orders, pending and opened. Order ticket is the key.
@@ -113,7 +121,10 @@ class backtesting():
                         process = True
                         self.process_symbol_tf_main_bar(symbol_tf)
                     elif symbol_index is not None:
+                        # Close all open orders
+                        self.close_all_orders()
                         self.dict_bardata_index[symbol_tf] = None
+                        process = False
             self.START = process
 
         self.ACTIVE = False
@@ -143,16 +154,19 @@ class backtesting():
         bar_data = self.dict_bardata[main_symbol_tf]
         bar_data_index = self.dict_bardata_index[main_symbol_tf]
         # Trigger on_bar_data event
-        self.event_handler.on_bar_data(param_symbol, main_timeframe, bar_data['DateTime'][bar_data_index], bar_data['Open'][bar_data_index],
-                                       bar_data['High'][bar_data_index], bar_data['Low'][bar_data_index], bar_data['Close'][bar_data_index],
+        self.event_handler.on_bar_data(param_symbol, main_timeframe, bar_data['DateTime'][bar_data_index],
+                                       bar_data['Open'][bar_data_index],
+                                       bar_data['High'][bar_data_index], bar_data['Low'][bar_data_index],
+                                       bar_data['Close'][bar_data_index],
                                        bar_data['Volume'][bar_data_index])
         # Process all data bars with same symbol but higher timeframe
         for symbol_tf in self.dict_bardata.keys():
             symbol, timeframe = self.extract_symbol_and_timeframe(symbol_tf)
-            if symbol_tf != main_symbol_tf and timeframe < main_timeframe: # Only set index for higher timeframes.
+            if symbol_tf != main_symbol_tf and timeframe < main_timeframe:  # Only set index for higher timeframes.
                 if symbol == param_symbol:
-                    prev_datetime = self.dict_bardata[main_symbol_tf].iloc[self.dict_bardata_index_prev[main_symbol_tf]][
-                        'DateTime']
+                    prev_datetime = \
+                        self.dict_bardata[main_symbol_tf].iloc[self.dict_bardata_index_prev[main_symbol_tf]][
+                            'DateTime']
                     curr_datetime = self.dict_bardata[main_symbol_tf].iloc[self.dict_bardata_index[main_symbol_tf]][
                         'DateTime']
 
@@ -162,9 +176,13 @@ class backtesting():
                         if bar_data_index is not None and bar_data_index > self.dict_bardata_index[symbol_tf]:
                             self.dict_bardata_index[symbol_tf] = bar_data_index
                             bar_data = self.dict_bardata[symbol_tf].iloc[self.dict_bardata_index[symbol_tf]]
-                            self.bar_data[symbol_tf] = {'time': bar_data['DateTime'].strftime('%Y-%m-%d %H:%M:%S'), 'open': bar_data['Open'], 'high': bar_data['High'], 'low': bar_data['Low'], 'close': bar_data['Close'], 'tick_volume': bar_data['Volume']}
+                            self.bar_data[symbol_tf] = {'time': bar_data['DateTime'].strftime('%Y-%m-%d %H:%M:%S'),
+                                                        'open': bar_data['Open'], 'high': bar_data['High'],
+                                                        'low': bar_data['Low'], 'close': bar_data['Close'],
+                                                        'tick_volume': bar_data['Volume']}
                             if symbol_tf in self.bar_data_subscription_requests:
-                                self.event_handler.on_bar_data(symbol, timeframe, bar_data['DateTime'], bar_data['Open'],
+                                self.event_handler.on_bar_data(symbol, timeframe, bar_data['DateTime'],
+                                                               bar_data['Open'],
                                                                bar_data['High'], bar_data['Low'], bar_data['Close'],
                                                                bar_data['Volume'])
 
@@ -277,6 +295,7 @@ class backtesting():
         else:
             result = True
         return result
+
     def subscribe_symbols_bar_data(self, symbolTimes):
         self.bar_data_subscription_requests = [f"{pair[0]}_{pair[1]}" for pair in symbolTimes]
         for st in symbolTimes:
@@ -304,7 +323,6 @@ class backtesting():
             if symbol_tf not in self.dict_bardata.keys():
                 self.load_bardata_file(symbol_tf.split('_'))
 
-
     """Sends a GET_HISTORIC_DATA command to request historic data. 
     
     Kwargs:
@@ -328,13 +346,13 @@ class backtesting():
                           param_end=datetime.utcnow().timestamp()):
         start = datetime.fromtimestamp(param_start)
         end = datetime.fromtimestamp(param_end)
-        #logger.debug(f"-> get_historic_data({symbol}, {time_frame}, {start}, {end})")
+        # logger.debug(f"-> get_historic_data({symbol}, {time_frame}, {start}, {end})")
         symbol_tf = f"{symbol}_{time_frame}"
         if symbol_tf in self.dict_bardata:
             if self.check_data_dates(self.dict_bardata[symbol_tf], start, end):
-                #logger.info(self.dict_bardata[symbol_tf])
+                # logger.info(self.dict_bardata[symbol_tf])
                 result = convert_bar_dataframe_to_dict(self.dict_bardata[symbol_tf], start, end)
-                #logger.info(f"get_historic_data() -> {result}")
+                # logger.info(f"get_historic_data() -> {result}")
                 self.event_handler.on_historic_data(symbol, time_frame, result)
         else:
             logger.error(f"No historic data for {symbol} {time_frame}!")
@@ -355,8 +373,10 @@ class backtesting():
     """
 
     def get_historic_trades(self, lookback_days=30):
-        self.event_handler.on_historic_trades = [(ticket_no, trade_data) for ticket_no, trade_data in self.dict_trades.items() if
-                  (trade_data.get('status') == OrderStatus.CLOSED or trade_data.get('status') == OrderStatus.CANCELED)]
+        self.event_handler.on_historic_trades = [(ticket_no, trade_data) for ticket_no, trade_data in
+                                                 self.dict_trades.items() if
+                                                 (trade_data.get('status') == OrderStatus.CLOSED or trade_data.get(
+                                                     'status') == OrderStatus.CANCELED)]
         self.event_handler.on_historic_trades()
 
     """Sends an OPEN_ORDER command to open an order.
@@ -427,6 +447,7 @@ class backtesting():
 
     def _get_main_tf(self, symbol):
         return next((string for string in self.main_symbol_tfs if string.startswith(symbol)), None)
+
     def _execute_order(self, ticket_no, trade_data, symbol_tf=None, bar_data=None):
         result = False
         if ticket_no == 34:
@@ -439,7 +460,8 @@ class backtesting():
             affects = self._order_affected_by_bar(trade_data, bar_data)
             if 0 < affects < 2:
                 if trade_data['status'] == OrderStatus.PENDING:
-                    self._open_order(ticket_no, trade_data, bar_data['DateTime'], trade_data['price'], trade_data['price'])
+                    self._open_order(ticket_no, trade_data, bar_data['DateTime'], trade_data['price'],
+                                     trade_data['price'])
                 elif trade_data['status'] == OrderStatus.OPEN:
                     self._manage_order(ticket_no, trade_data, bar_data['DateTime'], bar_data['Low'], bar_data['High'])
                 result = True
@@ -450,8 +472,9 @@ class backtesting():
                     init_datetime = bar_data['DateTime']
                     end_datetime = init_datetime + timedelta(minutes=self._get_minutes_from_symbol_tf(symbol_tf))
 
-                    bars_1m = self.dict_bardata[symbol_tf_m1][(self.dict_bardata[symbol_tf_m1]['DateTime'] >= init_datetime) & (
-                        self.dict_bardata[symbol_tf_m1]['DateTime'] < end_datetime)]
+                    bars_1m = self.dict_bardata[symbol_tf_m1][
+                        (self.dict_bardata[symbol_tf_m1]['DateTime'] >= init_datetime) & (
+                                self.dict_bardata[symbol_tf_m1]['DateTime'] < end_datetime)]
 
                     pending_affects = affects
                     bar_1m_index = 0
@@ -470,12 +493,14 @@ class backtesting():
                     if not result:
                         logger.error(
                             f'_execute_pending_order() -> Loop in M1 for {symbol_tf}, bar_data = {bar_data} continues with pending actions')
-                        raise Exception(f'_execute_pending_order() -> Loop in M1 for {symbol_tf} continues with pending actions')
+                        raise Exception(
+                            f'_execute_pending_order() -> Loop in M1 for {symbol_tf} continues with pending actions')
                         exit()
 
                 elif symbol_tf.endswith('M1'):
                     # TODO: implement tick exploration, in the meantime give an error and interrupts the process.
-                    logger.error(f'_execute_pending_order() -> Tick data analysis required for {symbol_tf}, bar_data = {bar_data}')
+                    logger.error(
+                        f'_execute_pending_order() -> Tick data analysis required for {symbol_tf}, bar_data = {bar_data}')
                     raise Exception('_execute_pending_order() -> Tick data analysis required for {symbol_tf}')
                     exit()
                 else:
@@ -498,13 +523,14 @@ class backtesting():
         elif tf == 'M1':
             result = 1
         return result
+
     def _order_affected_by_bar(self, trade_data, bar_data):
         affected_times = 0
         if trade_data['type'].endswith('limit') or trade_data['type'].endswith('stop'):
             if bar_data['Low'] <= trade_data['price'] <= bar_data['High']:
                 affected_times += 1
 
-        if affected_times == 1 or trade_data['type'] in ['buy','sell']:
+        if affected_times == 1 or trade_data['type'] in ['buy', 'sell']:
             if bar_data['Low'] <= trade_data['SL'] <= bar_data['High']:
                 affected_times += 1
             if bar_data['Low'] <= trade_data['TP'] <= bar_data['High']:
@@ -521,7 +547,7 @@ class backtesting():
             result = self.dict_tickdata[symbol][(self.dict_tickdata[symbol]['DateTime'] >= init_datetime)].head(1)
         else:
             result = self.dict_tickdata[symbol][(self.dict_tickdata[symbol]['DateTime'] >= init_datetime) & (
-                        self.dict_tickdata[symbol]['DateTime'] < end_datetime)]
+                    self.dict_tickdata[symbol]['DateTime'] < end_datetime)]
         return result
 
     def execute_order_on_tick(self, ticket_no, trade_data):
@@ -529,14 +555,16 @@ class backtesting():
             order_type = trade_data.get('type')
             order_symbol = trade_data['symbol']
             tick_data = self.get_tick_data_for_date_range(order_symbol, self.current_datetime)
-            self._open_order(ticket_no, trade_data, tick_data['DateTime'].iloc[0], tick_data['Bid'].iloc[0], tick_data['Ask'].iloc[0])
+            self._open_order(ticket_no, trade_data, tick_data['DateTime'].iloc[0], tick_data['Bid'].iloc[0],
+                             tick_data['Ask'].iloc[0])
 
     def _open_order(self, ticket_no, trade_data, execution_datetime, market_bid_price, market_ask_price):
         order_type = trade_data.get('type')
         order_symbol = trade_data['symbol']
         if order_type.startswith('buy'):
             trade_data['type'] = 'buy'
-            trade_data['open_price'] = market_ask_price
+            # not use market_ask_price because it is not having a real spread.
+            trade_data['open_price'] = market_bid_price + self.symbol_specs[order_symbol]['pip_value']
         else:
             trade_data['type'] = 'sell'
             trade_data['open_price'] = market_bid_price
@@ -552,40 +580,33 @@ class backtesting():
     def manage_orders(self, symbol, symbol_tf):
         if len(self.dict_trades) > 0:
             orders = [(ticket_no, trade_data) for ticket_no, trade_data in self.dict_trades.items() if
-                           trade_data.get('symbol') == symbol and
-                           trade_data.get('status') in [OrderStatus.OPEN, OrderStatus.PENDING]]
+                      trade_data.get('symbol') == symbol and
+                      trade_data.get('status') in [OrderStatus.OPEN, OrderStatus.PENDING]]
             for ticket_no, trade_data in orders:
                 self._execute_order(ticket_no, trade_data)
 
     def _manage_order(self, ticket_no, trade_data, execution_datetime, bar_low_price, bar_high_price):
         order_type = trade_data.get('type')
         order_symbol = trade_data.get('symbol')
+        pip_value = self.symbol_specs[order_symbol]['pip_value']
         to_inform = False
         if order_type == 'buy':
             if trade_data.get('SL') > 0.0:
                 if bar_low_price <= trade_data.get('SL'):
-                    trade_data['close_price'] = trade_data.get('SL')
-                    trade_data['close_time'] = execution_datetime
-                    trade_data['status'] = OrderStatus.CLOSED
+                    self._close_order(ticket_no, trade_data.get('SL'), execution_datetime)
                     to_inform = True
             if trade_data.get('TP') > 0.0:
                 if bar_high_price >= trade_data.get('TP'):
-                    trade_data['close_price'] = trade_data.get('TP')
-                    trade_data['close_time'] = execution_datetime
-                    trade_data['status'] = OrderStatus.CLOSED
+                    self._close_order(ticket_no, trade_data.get('TP'), execution_datetime)
                     to_inform = True
         elif order_type == 'sell':
             if trade_data.get('SL') > 0.0:
                 if bar_high_price >= trade_data.get('SL'):
-                    trade_data['close_price'] = trade_data.get('SL')
-                    trade_data['close_time'] = execution_datetime
-                    trade_data['status'] = OrderStatus.CLOSED
+                    self._close_order(ticket_no, trade_data.get('SL') + pip_value, execution_datetime)
                     to_inform = True
             if trade_data.get('TP') > 0.0:
                 if bar_low_price <= trade_data.get('TP'):
-                    trade_data['close_price'] = trade_data.get('TP')
-                    trade_data['close_time'] = execution_datetime
-                    trade_data['status'] = OrderStatus.CLOSED
+                    self._close_order(ticket_no, trade_data.get('TP') + pip_value, execution_datetime)
                     to_inform = True
 
         if to_inform == True:
@@ -593,6 +614,12 @@ class backtesting():
             self.event_handler.on_message({'type': 'INFO',
                                            'message': f'Successfully closed 1 orders with symbol {order_symbol}.'})
             self.event_handler.on_order_event()
+
+    def get_left_n_elements(self, dataframe, start_index, n):
+        keys = dataframe.index.tolist()
+        start_index = keys.index(start_index)
+        end_index = start_index + n
+        return dataframe.iloc[start_index:end_index]
 
     # NOT USED BUT COULD BE USEFUL IN THE FUTURE
     def update_order_on_tick(self, ticket_no, trade_data):
@@ -733,15 +760,7 @@ class backtesting():
                 to_close = True
 
             if to_close:
-                self.dict_trades[ticket]['status'] = OrderStatus.CLOSED
-                self.dict_trades[ticket]['close_time'] = self.current_datetime
-                close_price = 0.0
-                tick_data = self.get_tick_data_for_date_range(symbol)
-                if trade_data['type'] in self.buy_order_types:
-                    close_price = tick_data['bid']
-                else:
-                    close_price = tick_data['ask']
-                self.dict_trades[ticket]['close_price'] = close_price
+                self._close_order(ticket)
                 result = True
         elif trade_data['status'] == OrderStatus.PENDING:
             self.dict_trades[ticket]['status'] = OrderStatus.CANCELED
@@ -749,13 +768,79 @@ class backtesting():
             result = True
 
         if result:
-            self.event_handler.on_order_event({ticket: self.dict_trades[ticket]})
             self.open_orders.pop(ticket)
             self.event_handler.on_message({'type': 'INFO',
                                            'message': f'Successfully closed 1 orders with symbol {symbol}.'})
             self.event_handler.on_order_event()
 
         return result
+
+    def _close_order(self, ticket, close_price=None, close_time=None):
+        trade_data = self.dict_trades[ticket]
+        symbol = trade_data['symbol']
+        pip_value = self.symbol_specs[symbol]['pip_value']
+        if close_time is None:
+            close_time = self.current_datetime
+        if close_price is None:
+            tick_data = self.get_tick_data_for_date_range(symbol)
+            close_price = tick_data['Bid'].iloc[0]
+            if trade_data['type'] in self.sell_order_types:
+                close_price = close_price + pip_value
+        self.dict_trades[ticket]['close_price'] = close_price
+        self.dict_trades[ticket]['close_time'] = close_time
+        self.dict_trades[ticket]['commission'] = self._calculate_commission(trade_data['lots'],
+                                                                            self.execution_commission_rate, symbol,
+                                                                            close_time)
+        self.dict_trades[ticket]['status'] = OrderStatus.CLOSED
+        self.dict_trades[ticket]['pnl'] = self._calculate_profit(trade_data)
+
+    def _calculate_profit(self, trade_data):
+        base_currency = trade_data['symbol'][:3]
+        quote_currency = self.account_info['currency']
+        contract_size = self.symbol_specs[trade_data['symbol']]['contract_size']
+
+        # Calculate profit.
+        profit = 0.0
+        if trade_data['type'] == 'buy':
+            profit = (trade_data['close_price'] - trade_data['open_price']) * trade_data['lots'] * contract_size
+        else:
+            profit = (trade_data['open_price'] - trade_data['close_price']) * trade_data['lots'] * contract_size
+
+        # If base currency is not quote currency then convert it.
+        if base_currency != quote_currency:
+            # Initialize CurrencyRates object
+            c = CurrencyRates(force_decimal=True)
+            # Get historic exchange rate
+            exchange_rate = float(c.get_rate(base_currency, quote_currency, trade_data['close_time']))
+            profit = round(profit * exchange_rate, 2)
+        else:
+            profit = round(profit, 2)
+        profit = profit + trade_data['commission']
+        return profit
+
+    def _calculate_commission(self, order_lots, commission_rate, symbol, date=None):
+        # Extract base currency from the symbol
+        base_currency = symbol[:3]
+        quote_currency = self.account_info['currency']
+        contract_size = self.symbol_specs[symbol]['contract_size']
+
+        # Calculate commission in base currency
+        commission_base_currency = ((order_lots * contract_size) * commission_rate) / 100.0
+
+        # If base currency is not quote currency then convert it.
+        if base_currency != quote_currency:
+            # Initialize CurrencyRates object
+            c = CurrencyRates(force_decimal=True)
+            if date is None:
+                date = self.current_datetime
+
+            # Get historic exchange rate
+            exchange_rate = float(c.get_rate(base_currency, quote_currency, date))
+            commission = round(commission_base_currency * exchange_rate, 2)
+        else:
+            commission = round(commission_base_currency, 2)
+        commission = (commission * (-1)) * 2 # roundtrip
+        return commission
 
     def GetCurrentTime(self):
         return self.current_datetime

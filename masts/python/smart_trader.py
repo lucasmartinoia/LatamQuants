@@ -42,6 +42,8 @@ class tick_processor():
                  back_test_balance=None,
                  back_test_currency=None,
                  back_test_leverage=None,
+                 back_test_execution_commission_rate=0.005,
+                 back_test_spread_pips=1.0,
                  MT4_directory_path=None,
                  time_delta_hours=5,
                  sleep_delay=0.005,  # 5 ms for time.sleep()
@@ -56,6 +58,8 @@ class tick_processor():
         self.back_test_start = datetime.strptime(back_test_start, '%Y-%m-%d %H:%M:%S')
         self.back_test_end = datetime.strptime(back_test_end, '%Y-%m-%d %H:%M:%S')
         self.back_test_directory_path = back_test_directory_path
+        self.back_test_execution_commission_rate = back_test_execution_commission_rate
+        self.back_test_spread_pips = back_test_spread_pips
         self.MT4_directory_path = MT4_directory_path
         self.sleep_delay = sleep_delay
         self.max_retry_command_seconds = max_retry_command_seconds
@@ -107,6 +111,7 @@ class tick_processor():
 
     def init_strategies(self):
         main_strategy_symbol_tfs = []
+        symbol_specs = {}
         for strategy_name, strategy_params in self.strategies_info.items():
             instance = self.get_strategy_instance(strategy_name, strategy_params)
             self.strategies_instances[instance.id] = {'instance': instance, 'params': strategy_params}
@@ -129,8 +134,18 @@ class tick_processor():
                 else:
                     self.required_historic_bars[hist_symbol_tf] = {'max_bars': hist_bars,
                                                                    'strategies': {instance.id: hist_bars}}
+            # Add symbol specs for backtest
+            if self.mode == "backtest":
+                # Add pip_value to the symbol_spec
+                strategy_params['symbol_spec']['pip_value'] = self._get_pip_value(strategy_params['symbol_spec']['digits'])
+                symbol_specs[strategy_params['symbol']] = strategy_params['symbol_spec']
+
         if self.mode == "backtest":
             self.dma.main_symbol_tfs = main_strategy_symbol_tfs
+            self.dma.symbol_specs = symbol_specs
+
+    def _get_pip_value(self, digits):
+        return 10 ** (-1 * (digits - 1))
 
     def add_strategy_required_suscription(self, symbol_tf, strategy_id):
         if symbol_tf in self.required_suscriptions:

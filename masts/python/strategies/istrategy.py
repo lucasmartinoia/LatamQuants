@@ -16,11 +16,13 @@ class MarketTrend(Enum):
 # Define the interface (abstract base class)
 class IStrategy(ABC):
 
-    def __init__(self, smart_trader, symbol, timeframe, max_risk_per_trade):
+    def __init__(self, smart_trader, magic_no, symbol, timeframe, max_risk_per_trade, symbol_spec):
         self.smart_trader = smart_trader
+        self.magic_no = magic_no
         self.symbol = symbol
         self.timeframe = timeframe
         self.max_risk_per_trade = max_risk_per_trade
+        self.symbol_spec = symbol_spec
         self.required_data = {}
 
     @abstractmethod

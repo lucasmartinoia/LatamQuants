@@ -8,14 +8,12 @@ from python.api.dwx_client import dwx_client
 from python.backtesting.backtesting import backtesting
 
 class DivergentT1(IStrategy):
-    MAGIC_NO = 1
 
-    def __init__(self, smart_trader, symbol, timeframe, max_risk_per_trade):
-        super().__init__(smart_trader, symbol, timeframe, max_risk_per_trade)  # Call the constructor of the base class
+    def __init__(self, smart_trader, magic_no, symbol, timeframe, max_risk_per_trade, symbol_spec=None):
+        super().__init__(smart_trader, magic_no, symbol, timeframe, max_risk_per_trade, symbol_spec)  # Call the constructor of the base class
         self._set_required_bars()
         self.name = "DivergentT1"
         self.id = f"{self.name}_{symbol}_{timeframe}"
-        self.magic_no = self.MAGIC_NO  # identify orders in MT4 for this strategy.
         self.historic_data = {}
         logger.info(f"DivergentT1({symbol}, {timeframe}, {max_risk_per_trade})")
 
@@ -45,8 +43,7 @@ class DivergentT1(IStrategy):
         ema_values_3 = ema_values_3[-periods:]
 
         # Check if EMA_values_1 has a positive slope and is above the other two EMAs
-        if ema_values_1[periods-1] > ema_values_1[0] and ema_values_1[periods-1] > ema_values_2[periods-1] and ema_values_1[periods-1] > ema_values_3[
-            periods-1]:
+        if ema_values_1[periods-1] > ema_values_1[0] and ema_values_1[periods-1] > ema_values_2[periods-1] and ema_values_1[periods-1] > ema_values_3[periods-1]:
             # Check if EMA_values_2 is above EMA_values_3
             if ema_values_2[periods-1] > ema_values_3[periods-1]:
                 return MarketTrend.BULL
