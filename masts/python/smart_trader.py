@@ -10,6 +10,7 @@ from backtesting.backtesting import backtesting
 import json
 from python.strategies.divergent_t1 import DivergentT1
 from python.strategies.istrategy import IStrategy, SignalType, MarketTrend
+from python.common.output import add_dictionary_to_file
 
 """
 
@@ -79,7 +80,10 @@ class tick_processor():
         self.required_suscriptions = {}  # {'EURUSD_H4': ['strategy_id1', 'strategy_id2',..., 'strategy_idn'], 'GBPUSD_M5': ['strategy_idx1', 'strategy_idx2',..., 'strategy_idn']}
         self.required_historic_bars = {}  # {'EURUSD_H4': {'max_bars': 240, 'strategies': {'strategy_id1': bars. 'strategy_id2': bars2}}}
         self.strategies_instances = {}  # {strategy.id: {'instance': instance, 'params': params}}
-        self.orders = {}  #
+        self.orders = {}
+        self.output_filename = f'../output/trades_{datetime.now().strftime("%Y%m%d_%H%M%S")}_{self.mode}.txt'
+        self.output_next_trade_index = 0
+
         # set mode
         if self.mode == "live":
             self.dma = dwx_client(self, MT4_directory_path, sleep_delay,
@@ -312,12 +316,22 @@ class tick_processor():
     def on_historic_trades(self):
         logger.debug(f'historic_trades: {len(self.dma.historic_trades)}')
         logger.debug(self.dma.historic_trades)
+        self.inform_historic_trades()
+
+    def inform_historic_trades(self):
+        max_len = len(self.dma.historic_trades)
+        while self.output_next_trade_index < max_len:
+            add_dictionary_to_file(self.output_filename, self.dma.historic_trades[self.output_next_trade_index][1])
+            self.output_next_trade_index = self.output_next_trade_index + 1
 
     def on_message(self, message):
         if message['type'] == 'ERROR':
             logger.debug(f"{message['type']}|{message['error_type']}|{message['description']}")
         elif message['type'] == 'INFO':
             logger.debug(f"{message['type']}|{message['message']}")
+            # Log closed or canceled order.
+            if 'closed' in message['message']:
+                self.dma.get_historic_trades(100000)
 
     # triggers when an order is added or removed, not when only modified.
     def on_order_event(self):

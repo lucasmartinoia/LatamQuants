@@ -373,10 +373,10 @@ class backtesting():
     """
 
     def get_historic_trades(self, lookback_days=30):
-        self.event_handler.on_historic_trades = [(ticket_no, trade_data) for ticket_no, trade_data in
-                                                 self.dict_trades.items() if
-                                                 (trade_data.get('status') == OrderStatus.CLOSED or trade_data.get(
-                                                     'status') == OrderStatus.CANCELED)]
+        self.historic_trades = [(ticket_no, trade_data) for ticket_no, trade_data in
+                                self.dict_trades.items() if
+                                (trade_data.get('status') == OrderStatus.CLOSED or trade_data.get(
+                                    'status') == OrderStatus.CANCELED)]
         self.event_handler.on_historic_trades()
 
     """Sends an OPEN_ORDER command to open an order.
@@ -839,7 +839,7 @@ class backtesting():
             commission = round(commission_base_currency * exchange_rate, 2)
         else:
             commission = round(commission_base_currency, 2)
-        commission = (commission * (-1)) * 2 # roundtrip
+        commission = (commission * (-1)) * 2  # roundtrip
         return commission
 
     def GetCurrentTime(self):
