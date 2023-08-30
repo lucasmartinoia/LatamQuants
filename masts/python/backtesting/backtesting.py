@@ -7,12 +7,13 @@ from traceback import print_exc
 from datetime import datetime, timedelta
 from python.common.logging_config import logger
 from python.common.conversions import convert_bar_dataframe_to_dict, get_timeframe_delta, get_bar_data_clean_date
-from python.common.graphics import generate_trade_chart
+from python.common.graphics import graph_trading_results
 import pandas as pd
 from enum import Enum
 from collections import deque
 from forex_python.converter import CurrencyRates
 from decimal import Decimal
+from python.common.files import get_bar_data_file_name, find_file
 
 
 class OrderStatus(Enum):
@@ -66,6 +67,7 @@ class backtesting():
         self.main_symbol_tfs = None
         self.symbol_specs = None
         self.current_datetime = start_datetime
+        self.self.output_filename = None
 
         # Store parameters
         self.start_datetime = start_datetime
@@ -126,6 +128,11 @@ class backtesting():
                         self.dict_bardata_index[symbol_tf] = None
                         process = False
             self.START = process
+
+        # TODO: complete parameters looping for main_symbol_tfs
+        foreach main_tf in self.main_symbol_tfs:
+            bar_data_file_name = get_bar_data_file_name(self.data_path, self.main_symbol_tfs)
+            graph_trading_results()
 
         self.ACTIVE = False
 
@@ -236,11 +243,6 @@ class backtesting():
         if not filtered_rows.empty:
             return filtered_rows.index[0]
 
-    def find_file(self, search_for, path):
-        for root, dirs, files in os.walk(path):
-            for file in files:
-                if search_for in file:
-                    return os.path.join(root, file)
 
     """Sends a SUBSCRIBE_SYMBOLS command to subscribe to market (tick) data.
 
@@ -265,7 +267,7 @@ class backtesting():
 
     def load_tickdata_file(self, symbol):
         search_for = f"{symbol}-TICK"
-        file_name = self.find_file(search_for, self.data_path)
+        file_name = find_file(search_for, self.data_path)
         if file_name == None:
             logger.error(f"Tickdata file for {search_for} not found!")
             raise Exception(f"Tickdata file for {search_for} not found!")
@@ -302,8 +304,7 @@ class backtesting():
             self.load_bardata_file(st)
 
     def load_bardata_file(self, symbolTime):
-        search_for = f'{symbolTime[0]}-{symbolTime[1]}'
-        file_name = self.find_file(search_for, self.data_path)
+        file_name = get_bar_data_file_name(self.data_path, symbolTime[0], symbolTime[1])
         if file_name == None:
             logger.error(f"Bardata file for {search_for} not found!")
             raise Exception(f"Bardata file for {search_for} not found!")

@@ -6,6 +6,7 @@ import pandas as pd
 import requests
 from datetime import datetime, timedelta
 import matplotlib.colors as mcolors
+from python.common.output import extract_dictionaries_from_file
 
 def get_color_code(color_name):
     color_name = color_name.lower()
@@ -106,11 +107,12 @@ def graph_trading_results(bars_data_filename, symbol, time_frame, start_date, en
     plot_ema(df, ax, 100, "purple")
     plot_ema(df, ax, 240, "gray")
     graph_trades(trades_filename)
-    # restore view (X-position and zoom) when we run this example again
+    # restore view (X-position and zoom) when we run this again
     # fplt.autoviewrestore()
     fplt.show()
 
 def graph_trades(trades_filename):
+    df = extract_dictionaries_from_file(trades_filename)
     # TODO: load trades and graph each one
     trade_info = None
     graph_trade(trade_info)
