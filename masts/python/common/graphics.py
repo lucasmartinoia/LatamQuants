@@ -106,22 +106,23 @@ def graph_trading_results(bars_data_filename, symbol, time_frame, start_date, en
     plot_ema(df, ax, 50, "brown")
     plot_ema(df, ax, 100, "purple")
     plot_ema(df, ax, 240, "gray")
-    graph_trades(trades_filename)
+    graph_trades(trades_filename, symbol)
     # restore view (X-position and zoom) when we run this again
     # fplt.autoviewrestore()
     fplt.show()
 
-def graph_trades(trades_filename):
-    df = extract_dictionaries_from_file(trades_filename)
-    # TODO: load trades and graph each one
-    trade_info = None
-    graph_trade(trade_info)
+
+def graph_trades(trades_filename, symbol):
+    df = extract_dictionaries_from_file(trades_filename, symbol)
+    df.apply(graph_trade, axis=1)
+
 
 def graph_trade(trade_info):
-    target_datetime = pd.to_datetime('2023-08-04 18:00')
-    new_value = 1.105
-    text = fplt.add_text((target_datetime, 1.107), "I'm here alright!", color='#bb7700')
-    line = fplt.add_line((target_datetime, 1.107), (target_datetime + timedelta(hours=72), 1.100), color='#9900ff',
-                         interactive=True)
-    rect = fplt.add_rect((target_datetime, 1.107), (target_datetime + timedelta(hours=72), 1.100), color='#8c8',
-                         interactive=True)
+    open_datetime = pd.to_datetime(trade_info['open_time'])
+    close_datetime = pd.to_datetime(trade_info['close_time'])
+    open_price = trade_info['open_price']
+    close_price = trade_info['close_price']
+    #target_datetime = pd.to_datetime('2023-08-04 18:00')
+    #text = fplt.add_text((target_datetime, 1.107), "I'm here alright!", color='#bb7700')
+    line = fplt.add_line((open_datetime, open_price), (close_datetime, close_price), color=get_color_code('red'), interactive=True)
+    #rect = fplt.add_rect((target_datetime, 1.107), (target_datetime + timedelta(hours=72), 1.100), color='#8c8', interactive=True)

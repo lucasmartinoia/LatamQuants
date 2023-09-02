@@ -67,7 +67,7 @@ class backtesting():
         self.main_symbol_tfs = None
         self.symbol_specs = None
         self.current_datetime = start_datetime
-        self.self.output_filename = None
+        self.output_filename = None
 
         # Store parameters
         self.start_datetime = start_datetime
@@ -129,10 +129,10 @@ class backtesting():
                         process = False
             self.START = process
 
-        # TODO: complete parameters looping for main_symbol_tfs
-        foreach main_tf in self.main_symbol_tfs:
-            bar_data_file_name = get_bar_data_file_name(self.data_path, self.main_symbol_tfs)
-            graph_trading_results()
+        for symbol_tf in self.main_symbol_tfs:
+            symbol, timeframe = self.extract_symbol_and_timeframe(symbol_tf)
+            bar_data_file_name = get_bar_data_file_name(self.data_path, symbol, timeframe)
+            graph_trading_results(bar_data_file_name, symbol, timeframe, self.start_datetime, self.end_datetime, self.output_filename)
 
         self.ACTIVE = False
 

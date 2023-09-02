@@ -10,7 +10,7 @@ from backtesting.backtesting import backtesting
 import json
 from python.strategies.divergent_t1 import DivergentT1
 from python.strategies.istrategy import IStrategy, SignalType, MarketTrend
-from python.common.output import add_dictionary_to_file
+from python.common.output import add_trade_to_file
 from python.common.graphics import graph_trading_results
 
 """
@@ -105,7 +105,7 @@ class tick_processor():
         # For backtesting - Load historic data
         if self.mode == 'backtest':
             self.dma.load_historic_bars(self.required_historic_bars)
-            self.dma.self.output_filename = self.self.output_filename
+            self.dma.output_filename = self.output_filename
         self.dma.start()
 
     def get_strategy_instance(self, strategy_name, strategy_params):
@@ -322,7 +322,7 @@ class tick_processor():
     def inform_historic_trades(self):
         max_len = len(self.dma.historic_trades)
         while self.output_next_trade_index < max_len:
-            add_dictionary_to_file(self.output_filename, self.dma.historic_trades[self.output_next_trade_index][1])
+            add_trade_to_file(self.output_filename, self.dma.historic_trades[self.output_next_trade_index][1])
             self.output_next_trade_index = self.output_next_trade_index + 1
 
     def on_message(self, message):
