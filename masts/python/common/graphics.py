@@ -7,6 +7,7 @@ import requests
 from datetime import datetime, timedelta
 import matplotlib.colors as mcolors
 from python.common.output import extract_dictionaries_from_file
+import talib
 
 def get_color_code(color_name):
     color_name = color_name.lower()
@@ -40,9 +41,9 @@ def plot_bollinger_bands(df, ax):
     fplt.fill_between(p0, p1, color='#bbb')
 
 
-def plot_ema(df, ax, periods, color):
+def plot_ema(df, ax, periods, color, width=2):
     color_code = get_color_code(color)
-    df.close.ewm(span=periods).mean().plot(ax=ax, legend=f'EMA_{periods}', color=color_code)
+    talib.EMA(df['close'], timeperiod=periods).plot(ax=ax, legend=f'EMA_{periods}', color=color_code, width=width)
 
 
 def plot_heikin_ashi(df, ax):
@@ -55,6 +56,10 @@ def plot_heikin_ashi(df, ax):
     df['h_high'] = df[['high','h_open','h_close']].max(axis=1)
     df['h_low'] = df[['low','h_open','h_close']].min(axis=1)
     df[['h_open','h_close','h_high','h_low']].plot(ax=ax, kind='candle')
+
+
+def plot_candles(df, ax):
+    df[['open', 'close', 'high', 'low']].plot(ax=ax, kind='candle')
 
 
 def plot_heikin_ashi_volume(df, ax):
@@ -102,10 +107,10 @@ def graph_trading_results(bars_data_filename, symbol, time_frame, start_date, en
     ax = fplt.create_plot(f'MASTS + {symbol} {time_frame}', rows=1)
     ax.set_visible(xgrid=True, ygrid=True)
     # price chart
-    plot_heikin_ashi(df, ax)
-    plot_ema(df, ax, 50, "brown")
-    plot_ema(df, ax, 100, "purple")
-    plot_ema(df, ax, 240, "gray")
+    plot_candles(df, ax)
+    plot_ema(df, ax, 50, "red")
+    plot_ema(df, ax, 100, "yellow")
+    plot_ema(df, ax, 240, "black")
     graph_trades(trades_filename, symbol)
     # restore view (X-position and zoom) when we run this again
     # fplt.autoviewrestore()
@@ -122,7 +127,31 @@ def graph_trade(trade_info):
     close_datetime = pd.to_datetime(trade_info['close_time'])
     open_price = trade_info['open_price']
     close_price = trade_info['close_price']
-    #target_datetime = pd.to_datetime('2023-08-04 18:00')
-    #text = fplt.add_text((target_datetime, 1.107), "I'm here alright!", color='#bb7700')
-    line = fplt.add_line((open_datetime, open_price), (close_datetime, close_price), color=get_color_code('red'), interactive=True)
-    #rect = fplt.add_rect((target_datetime, 1.107), (target_datetime + timedelta(hours=72), 1.100), color='#8c8', interactive=True)
+    # colors
+    color_line_buy = get_color_code('blue')
+    color_line_sell = get_color_code('red')
+    color_rect_profit = get_color_code('lightgreen')
+    color_rect_loss = get_color_code('orange')
+    color_text = get_color_code('black')
+    color_line = None
+    color_rect = None
+    text_price = None
+    if trade_info['type'] == 'buy':
+        color_line = color_line_buy
+    else:
+        color_line = color_line_sell
+
+    if trade_info['pnl'] >= 0.0:
+        color_rect = color_rect_profit
+    else:
+        color_rect = color_rect_loss
+    if close_price > open_price:
+        text_price = close_price * 1.001
+    else:
+        text_price = close_price * 0.999
+    text_label = f"#{trade_info['ticket_no']}_{trade_info['type']}_{trade_info['pnl']}"
+
+    # plotting
+    line = fplt.add_line((open_datetime, open_price), (close_datetime, close_price), color=color_line, interactive=True)
+    rect = fplt.add_rect((open_datetime, open_price), (close_datetime, close_price), color=color_rect, interactive=True)
+    text = fplt.add_text((open_datetime, open_price), text_label, color=color_text)

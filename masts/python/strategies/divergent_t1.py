@@ -42,17 +42,19 @@ class DivergentT1(IStrategy):
         ema_values_2 = ema_values_2[-periods:]
         ema_values_3 = ema_values_3[-periods:]
 
+        last_candle = periods-1
+        oldest_candle = 0
+
         # Check if EMA_values_1 has a positive slope and is above the other two EMAs
-        if ema_values_1[periods-1] > ema_values_1[0] and ema_values_1[periods-1] > ema_values_2[periods-1] and ema_values_1[periods-1] > ema_values_3[periods-1]:
+        if ema_values_1[oldest_candle] < ema_values_1[last_candle] and ema_values_1[last_candle] > ema_values_2[last_candle] and ema_values_1[last_candle] > ema_values_3[last_candle]:
             # Check if EMA_values_2 is above EMA_values_3
-            if ema_values_2[periods-1] > ema_values_3[periods-1]:
+            if ema_values_2[last_candle] > ema_values_3[last_candle]:
                 return MarketTrend.BULL
 
         # Check if EMA_values_1 has a negative slope and is below the other two EMAs
-        if ema_values_1[periods-1] < ema_values_1[0] and ema_values_1[periods-1] < ema_values_2[periods-1] and ema_values_1[periods-1] < ema_values_3[
-            periods-1]:
+        if ema_values_1[oldest_candle] > ema_values_1[last_candle] and ema_values_1[last_candle] < ema_values_2[last_candle] and ema_values_1[last_candle] < ema_values_3[last_candle]:
             # Check if EMA_values_2 is below EMA_values_3
-            if ema_values_2[periods-1] < ema_values_3[periods-1]:
+            if ema_values_2[last_candle] < ema_values_3[last_candle]:
                 return MarketTrend.BEAR
 
         return MarketTrend.UNDEFINED
