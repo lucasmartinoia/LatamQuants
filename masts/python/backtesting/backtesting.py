@@ -266,7 +266,7 @@ class backtesting():
             self.load_tickdata_file(symbol)
 
     def load_tickdata_file(self, symbol):
-        search_for = f"{symbol}-TICK"
+        search_for = f"{symbol}_TICK_UTCPlus03-TICK"
         file_name = find_file(search_for, self.data_path)
         if file_name == None:
             logger.error(f"Tickdata file for {search_for} not found!")
