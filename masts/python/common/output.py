@@ -16,18 +16,4 @@ def add_dictionary_to_file(filename, dictionary):
         file.write('\n')  # Add a new line after appending the dictionary
 
 
-def extract_dictionaries_from_file(filename, symbol=None):
-    dictionaries = []
-    with open(filename, 'r') as file:
-        lines = file.readlines()
-        for line in lines:
-            dict_str = line.strip()
-            try:
-                dictionary = ast.literal_eval(dict_str)
-                # Only take into account orders with same symbol
-                if symbol is None or symbol == dictionary['symbol']:
-                    dictionaries.append(dictionary)
-            except (SyntaxError, ValueError):
-                pass
-    df = pd.DataFrame(dictionaries)
-    return df
+

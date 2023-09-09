@@ -6,11 +6,12 @@ import pandas as pd
 import requests
 from datetime import datetime, timedelta
 import matplotlib.colors as mcolors
-from python.common.output import extract_dictionaries_from_file
+from python.common.files import extract_dictionaries_from_file, load_qdm_data_from_file
 import talib
 from python.common.conversions import convert_historic_bars_to_dataframe
 from pathlib import Path
 from python.common.logging_config import logger
+
 
 def get_color_code(color_name):
     color_name = color_name.lower()
@@ -22,14 +23,6 @@ def get_color_code(color_name):
 
 def local2timestamp(s):
     return int(dateutil.parser.parse(s).timestamp())
-
-
-def load_qdm_data(file_name):
-    df = pd.read_csv(file_name)
-    df['DateTime'] = pd.to_datetime(df['Date'].astype(str) + ' ' + df['Time'])
-    df = df.drop(['Date', 'Time'], axis=1)
-    df = df.rename(columns={'DateTime':'time', 'Open':'open', 'Close':'close', 'High':'high', 'Low':'low', 'Volume':'volume'})
-    return df.set_index('time')
 
 
 def plot_accumulation_distribution(df, ax):
@@ -108,7 +101,7 @@ def plot_vma(df, ax):
 
 
 def graph_trading_results(bars_data_filename, symbol, time_frame, start_date, end_date, trades_filename):
-    df = load_qdm_data(bars_data_filename)
+    df = load_qdm_data_from_file(bars_data_filename)
     logger.debug(f"graph_trading_results() -> df = {df}")
     # graph title
     ax = fplt.create_plot(f'MASTS + {symbol} {time_frame}', rows=1)
