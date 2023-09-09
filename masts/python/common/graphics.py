@@ -10,6 +10,7 @@ from python.common.output import extract_dictionaries_from_file
 import talib
 from python.common.conversions import convert_historic_bars_to_dataframe
 from pathlib import Path
+from python.common.logging_config import logger
 
 def get_color_code(color_name):
     color_name = color_name.lower()
@@ -108,6 +109,7 @@ def plot_vma(df, ax):
 
 def graph_trading_results(bars_data_filename, symbol, time_frame, start_date, end_date, trades_filename):
     df = load_qdm_data(bars_data_filename)
+    logger.debug(f"graph_trading_results() -> df = {df}")
     # graph title
     ax = fplt.create_plot(f'MASTS + {symbol} {time_frame}', rows=1)
     ax.set_visible(xgrid=True, ygrid=True)
@@ -178,7 +180,10 @@ def graph_trend_from_backtesting(historic_bars, symbol, time_frame, ema50, ema10
     red_code = get_color_code("red")
     yellow_code = get_color_code("yellow")
     black_code = get_color_code("black")
-    df.ema50.plot(ax=ax, legend='ema50', color=red_code, width=width)
-    df.ema100.plot(ax=ax, legend='ema100', color=yellow_code, width=width)
-    df.ema240.plot(ax=ax, legend='ema240', color=black_code, width=width)
+    #df.ema50.plot(ax=ax, legend='ema50', color=red_code, width=width)
+    #df.ema100.plot(ax=ax, legend='ema100', color=yellow_code, width=width)
+    #df.ema240.plot(ax=ax, legend='ema240', color=black_code, width=width)
+    plot_ema(df, ax, 50, "red")
+    plot_ema(df, ax, 100, "yellow")
+    plot_ema(df, ax, 240, "black")
     fplt.show()

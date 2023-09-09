@@ -4,11 +4,6 @@ from datetime import datetime, timedelta
 from python.common.logging_config import logger
 
 
-def convert_historic_bars_element_to_array(element_label, data):
-    result_array = [values[element_label] for values in data.values()]
-    return np.array(result_array)
-
-
 def convert_bar_dataframe_to_dict(df, start_datetime=None, end_datetime=None):
     # Filter the DataFrame based on start_datetime and end_datetime
     if start_datetime is not None:

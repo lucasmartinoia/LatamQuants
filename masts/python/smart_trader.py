@@ -3,7 +3,7 @@ from random import random
 from datetime import datetime, timedelta
 from api.dwx_client import dwx_client
 from indicators.macd_platinum_v2 import macd_platinum_v2
-from python.common.conversions import convert_historic_bars_element_to_array, convert_periods_to_datetime_range, \
+from python.common.conversions import convert_periods_to_datetime_range, \
     get_lasts_from_dictionary
 from python.common.logging_config import setup_logging, logger
 from backtesting.backtesting import backtesting
@@ -297,8 +297,8 @@ class tick_processor():
 
     def on_historic_data(self, symbol, time_frame, data):
         symbol_tf = f"{symbol}_{time_frame}"
-        # Cut bars to only required ones.
-        data = get_lasts_from_dictionary(data, self.required_historic_bars[symbol_tf]['max_bars'])
+        # Cut bars to only required ones. DISABLED BECAUSE EMA_240 ISSUE!!!
+        #data = get_lasts_from_dictionary(data, self.required_historic_bars[symbol_tf]['max_bars'])
         # Store data.
         self.historic_data[f'{symbol}_{time_frame}'] = {'timestamp': self.historic_request_last_timestamp[symbol],
                                                         'data': data}

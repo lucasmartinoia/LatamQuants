@@ -2,11 +2,11 @@ import talib
 from python.common.logging_config import logger
 from python.strategies.istrategy import IStrategy, SignalType, MarketTrend
 from python.indicators.macd_platinum_v2 import macd_platinum_v2
-from python.common.conversions import convert_historic_bars_element_to_array, convert_periods_to_datetime_range, \
-    get_lasts_from_dictionary
+from python.common.conversions import convert_historic_bars_to_dataframe
 from python.api.dwx_client import dwx_client
 from python.backtesting.backtesting import backtesting
 from python.common.graphics import graph_trend_from_backtesting
+from datetime import datetime
 
 class DivergentT1(IStrategy):
 
@@ -66,15 +66,19 @@ class DivergentT1(IStrategy):
 
         # Use 3 EMAs: 50, 100 and 240 in main timeframe
         symbol_tf = f"{self.symbol}_{self.timeframe}"
-        data = self.historic_data[symbol_tf]['data']
-        close_prices = convert_historic_bars_element_to_array('close', data)
+        data = self.historic_data[symbol_tf]['data'].copy()
+        df = convert_historic_bars_to_dataframe(data)
+        close_prices = df['close']
         ema_50_values = talib.EMA(close_prices, timeperiod=50)
         ema_100_values = talib.EMA(close_prices, timeperiod=100)
         ema_240_values = talib.EMA(close_prices, timeperiod=240)
         result = self._get_trend_from_emas(ema_50_values, ema_100_values, ema_240_values)
+        max_datetime = max([datetime.strptime(key, '%Y.%m.%d %H:%M') for key in data.keys()])
 
-        #if result != MarketTrend.UNDEFINED:
-        #graph_trend_from_backtesting(data, self.symbol, self.timeframe, ema_50_values, ema_100_values, ema_240_values)
+        #if max_datetime >= datetime.strptime('2023.08.01 00:00', '%Y.%m.%d %H:%M'):
+        #    logger.debug(f"_get_market_trend() -> data = {data}")
+        #    logger.debug(f"_get_market_trend() -> df = {df}")
+        #    graph_trend_from_backtesting(data, self.symbol, self.timeframe, ema_50_values, ema_100_values, ema_240_values)
 
         logger.info(f"ema50 [{ema_50_values[-3:]}], ema100 [{ema_100_values[-3:]}], ema240 [{ema_240_values[-3:]}]")
         logger.info(f"_get_market_trend() -> result [{result}]")
