@@ -8,6 +8,8 @@ from datetime import datetime, timedelta
 import matplotlib.colors as mcolors
 from python.common.output import extract_dictionaries_from_file
 import talib
+from python.common.conversions import convert_historic_bars_to_dataframe
+from pathlib import Path
 
 def get_color_code(color_name):
     color_name = color_name.lower()
@@ -16,8 +18,10 @@ def get_color_code(color_name):
     else:
         return None
 
+
 def local2timestamp(s):
     return int(dateutil.parser.parse(s).timestamp())
+
 
 def load_qdm_data(file_name):
     df = pd.read_csv(file_name)
@@ -25,6 +29,7 @@ def load_qdm_data(file_name):
     df = df.drop(['Date', 'Time'], axis=1)
     df = df.rename(columns={'DateTime':'time', 'Open':'open', 'Close':'close', 'High':'high', 'Low':'low', 'Volume':'volume'})
     return df.set_index('time')
+
 
 def plot_accumulation_distribution(df, ax):
     ad = (2*df.close-df.high-df.low) * df.volume / (df.high - df.low)
@@ -118,8 +123,9 @@ def graph_trading_results(bars_data_filename, symbol, time_frame, start_date, en
 
 
 def graph_trades(trades_filename, symbol):
-    df = extract_dictionaries_from_file(trades_filename, symbol)
-    df.apply(graph_trade, axis=1)
+    if Path(trades_filename).exists():
+        df = extract_dictionaries_from_file(trades_filename, symbol)
+        df.apply(graph_trade, axis=1)
 
 
 def graph_trade(trade_info):
@@ -155,3 +161,24 @@ def graph_trade(trade_info):
     line = fplt.add_line((open_datetime, open_price), (close_datetime, close_price), color=color_line, interactive=True)
     rect = fplt.add_rect((open_datetime, open_price), (close_datetime, close_price), color=color_rect, interactive=True)
     text = fplt.add_text((open_datetime, open_price), text_label, color=color_text)
+
+
+def graph_trend_from_backtesting(historic_bars, symbol, time_frame, ema50, ema100, ema240):
+    df = convert_historic_bars_to_dataframe(historic_bars)
+    # graph title
+    ax = fplt.create_plot(f'MASTS [GraphTrend] + {symbol} {time_frame}', rows=1)
+    ax.set_visible(xgrid=True, ygrid=True)
+    # price chart
+    plot_candles(df, ax)
+    # plot emas
+    df['ema50'] = ema50
+    df['ema100'] = ema100
+    df['ema240'] = ema240
+    width = 2
+    red_code = get_color_code("red")
+    yellow_code = get_color_code("yellow")
+    black_code = get_color_code("black")
+    df.ema50.plot(ax=ax, legend='ema50', color=red_code, width=width)
+    df.ema100.plot(ax=ax, legend='ema100', color=yellow_code, width=width)
+    df.ema240.plot(ax=ax, legend='ema240', color=black_code, width=width)
+    fplt.show()

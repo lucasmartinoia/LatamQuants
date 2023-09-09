@@ -6,6 +6,7 @@ from python.common.conversions import convert_historic_bars_element_to_array, co
     get_lasts_from_dictionary
 from python.api.dwx_client import dwx_client
 from python.backtesting.backtesting import backtesting
+from python.common.graphics import graph_trend_from_backtesting
 
 class DivergentT1(IStrategy):
 
@@ -19,7 +20,7 @@ class DivergentT1(IStrategy):
 
     def _set_required_bars(self):
         self.required_data = {}
-        self.required_data[f"{self.symbol}_{self.timeframe}"] = 245
+        self.required_data[f"{self.symbol}_{self.timeframe}"] = 350
         self.required_data[f"{self.symbol}_M1"] = 120
 
     def _get_signal(self, market_trend):
@@ -71,6 +72,10 @@ class DivergentT1(IStrategy):
         ema_100_values = talib.EMA(close_prices, timeperiod=100)
         ema_240_values = talib.EMA(close_prices, timeperiod=240)
         result = self._get_trend_from_emas(ema_50_values, ema_100_values, ema_240_values)
+
+        #if result != MarketTrend.UNDEFINED:
+        #graph_trend_from_backtesting(data, self.symbol, self.timeframe, ema_50_values, ema_100_values, ema_240_values)
+
         logger.info(f"ema50 [{ema_50_values[-3:]}], ema100 [{ema_100_values[-3:]}], ema240 [{ema_240_values[-3:]}]")
         logger.info(f"_get_market_trend() -> result [{result}]")
         return result

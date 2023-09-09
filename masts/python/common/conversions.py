@@ -8,6 +8,7 @@ def convert_historic_bars_element_to_array(element_label, data):
     result_array = [values[element_label] for values in data.values()]
     return np.array(result_array)
 
+
 def convert_bar_dataframe_to_dict(df, start_datetime=None, end_datetime=None):
     # Filter the DataFrame based on start_datetime and end_datetime
     if start_datetime is not None:
@@ -78,7 +79,7 @@ def get_bar_data_clean_date(dt, timeframe):
 
 
 def convert_periods_to_datetime_range(periods, timeframe, end_datetime):
-    possible_missing_periods_fix = 50
+    possible_missing_periods_fix = 100
     # Check if there are Saturdays or Sundays between start and end datetimes
     timeframe_delta = get_timeframe_delta(timeframe)
     # Get clean data - 1 period to avoid current bar.
@@ -100,3 +101,10 @@ def get_lasts_from_dictionary(dictionary, n):
 
     keys = list(dictionary.keys())[-n:]
     return {key: dictionary[key] for key in keys}
+
+
+def convert_historic_bars_to_dataframe(data_dict):
+    df = pd.DataFrame(data_dict).T.reset_index()
+    df.columns = ['time', 'open', 'high', 'low', 'close', 'volume']
+    df['time'] = pd.to_datetime(df['time'])
+    return df.set_index('time')
