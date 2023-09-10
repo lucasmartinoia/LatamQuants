@@ -14,7 +14,7 @@ from collections import deque
 from forex_python.converter import CurrencyRates
 from decimal import Decimal
 from python.common.files import get_bar_data_file_name, find_file
-
+from python.common.reports import generate_report_metrics
 
 class OrderStatus(Enum):
     PENDING = 0
@@ -132,6 +132,7 @@ class backtesting():
         for symbol_tf in self.main_symbol_tfs:
             symbol, timeframe = self.extract_symbol_and_timeframe(symbol_tf)
             bar_data_file_name = get_bar_data_file_name(self.data_path, symbol, timeframe)
+            generate_report_metrics(bar_data_file_name, symbol, timeframe, self.start_datetime, self.end_datetime, self.output_filename)
             graph_trading_results(bar_data_file_name, symbol, timeframe, self.start_datetime, self.end_datetime, self.output_filename)
 
         self.ACTIVE = False
