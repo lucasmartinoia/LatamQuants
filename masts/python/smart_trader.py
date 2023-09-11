@@ -12,7 +12,7 @@ from python.strategies.divergent_t1 import DivergentT1
 from python.strategies.istrategy import IStrategy, SignalType, MarketTrend
 from python.common.output import add_trade_to_file
 from python.common.graphics import graph_trading_results
-from python.common.calculus import calculate_trailing_stop
+from python.common.calculus import calculate_trailing_stop, get_pip_value
 
 """
 
@@ -119,6 +119,10 @@ class tick_processor():
         main_strategy_symbol_tfs = []
         symbol_specs = {}
         for strategy_name, strategy_params in self.strategies_info.items():
+            # Add pip_value to the symbol_spec
+            strategy_params['symbol_spec']['pip_value'] = get_pip_value(strategy_params['symbol_spec']['digits'])
+
+            # Create strategy instance
             instance = self.get_strategy_instance(strategy_name, strategy_params)
             self.strategies_instances[instance.id] = {'instance': instance, 'params': strategy_params}
 
@@ -140,18 +144,11 @@ class tick_processor():
                 else:
                     self.required_historic_bars[hist_symbol_tf] = {'max_bars': hist_bars,
                                                                    'strategies': {instance.id: hist_bars}}
-            # Add symbol specs for backtest
-            if self.mode == "backtest":
-                # Add pip_value to the symbol_spec
-                strategy_params['symbol_spec']['pip_value'] = self._get_pip_value(strategy_params['symbol_spec']['digits'])
-                symbol_specs[strategy_params['symbol']] = strategy_params['symbol_spec']
+            symbol_specs[strategy_params['symbol']] = strategy_params['symbol_spec']
 
         if self.mode == "backtest":
             self.dma.main_symbol_tfs = main_strategy_symbol_tfs
             self.dma.symbol_specs = symbol_specs
-
-    def _get_pip_value(self, digits):
-        return 10 ** (-1 * (digits - 1))
 
     def add_strategy_required_suscription(self, symbol_tf, strategy_id):
         if symbol_tf in self.required_suscriptions:
@@ -251,10 +248,15 @@ class tick_processor():
         #         # self.dwx.close_orders_by_magic(0)
 
     def on_bar_data(self, symbol, time_frame, time, open_price, high, low, close_price, tick_volume):
-        #logger.debug(f'current_datetime -> {self.get_current_datetime(symbol)}')
-        logger.debug(f'on_bar_data() => {symbol}, {time_frame}, time:{time}, open:{open_price}, high:{high}, low:{low}, close:{close_price}, vol:{tick_volume}')
-        #logger.debug(f'bar_data: {self.dma.bar_data}')
-        #logger.debug(f'market_data: {self.dma.market_data}')
+        # logger.debug(f'current_datetime -> {self.get_current_datetime(symbol)}')
+        logger.debug(
+            f'on_bar_data() => {symbol}, {time_frame}, time:{time}, open:{open_price}, high:{high}, low:{low}, close:{close_price}, vol:{tick_volume}')
+        # logger.debug(f'bar_data: {self.dma.bar_data}')
+        # logger.debug(f'market_data: {self.dma.market_data}')
+
+        # Manage trailing stop loss orders
+        self.process_trailing_stop_loss()
+
         self.request_historic_data(symbol, time_frame)
 
         # if self.minute_counter == 1:
@@ -299,11 +301,12 @@ class tick_processor():
     def on_historic_data(self, symbol, time_frame, data):
         symbol_tf = f"{symbol}_{time_frame}"
         # Cut bars to only required ones. DISABLED BECAUSE EMA_240 ISSUE!!!
-        #data = get_lasts_from_dictionary(data, self.required_historic_bars[symbol_tf]['max_bars'])
+        # data = get_lasts_from_dictionary(data, self.required_historic_bars[symbol_tf]['max_bars'])
         # Store data.
         self.historic_data[f'{symbol}_{time_frame}'] = {'timestamp': self.historic_request_last_timestamp[symbol],
                                                         'data': data}
-        logger.debug(f'on_historic_data() => {symbol}, {time_frame}, {len(data)} bars, last bar datetime -> {list(data.keys())[-1]}, current datetime -> {self.get_current_datetime()}')
+        logger.debug(
+            f'on_historic_data() => {symbol}, {time_frame}, {len(data)} bars, last bar datetime -> {list(data.keys())[-1]}, current datetime -> {self.get_current_datetime()}')
         self.send_historic_data_to_strategies(symbol)
 
         # # Example about how to call an indicator.
@@ -344,6 +347,16 @@ class tick_processor():
         strategy_orders = [(ticket_no, trade_data) for ticket_no, trade_data in self.dma.open_orders.items() if
                            trade_data.get('magic') == magic_no]
         return strategy_orders
+
+    def process_trailing_stop_loss(self):
+        tsl_orders = [(ticket_no, trade_data) for ticket_no, trade_data in self.dma.open_orders.items() if
+                      trade_data.get('comment').find('tsl=') > -1]
+
+        for ticket_no, trade_data in tsl_orders:
+            margin_points = float(trade_data['comment'].replace('tsl=', ""))
+            new_sl = calculate_trailing_stop(trade_data, self.dma.market_data[trade_data['symbol']], margin_points)
+            if new_sl is not None:
+                self.dma.modify_order(ticket=ticket_no, take_profit=trade_data['TP'], stop_loss=new_sl)
 
 
 """ =====================================================================================================

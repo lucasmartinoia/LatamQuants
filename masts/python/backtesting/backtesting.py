@@ -16,6 +16,7 @@ from decimal import Decimal
 from python.common.files import get_bar_data_file_name, find_file
 from python.common.reports import generate_report_metrics
 
+
 class OrderStatus(Enum):
     PENDING = 0
     OPEN = 1
@@ -132,16 +133,19 @@ class backtesting():
         for symbol_tf in self.main_symbol_tfs:
             symbol, timeframe = self.extract_symbol_and_timeframe(symbol_tf)
             bar_data_file_name = get_bar_data_file_name(self.data_path, symbol, timeframe)
-            generate_report_metrics(bar_data_file_name, symbol, timeframe, self.start_datetime, self.end_datetime, self.output_filename)
-            graph_trading_results(bar_data_file_name, symbol, timeframe, self.start_datetime, self.end_datetime, self.output_filename)
+            generate_report_metrics(bar_data_file_name, symbol, timeframe, self.start_datetime, self.end_datetime,
+                                    self.output_filename)
+            graph_trading_results(bar_data_file_name, symbol, timeframe, self.start_datetime, self.end_datetime,
+                                  self.output_filename)
 
         self.ACTIVE = False
 
     def process_symbol_tf_main_bar(self, symbol_tf):
         symbol, timeframe = self.extract_symbol_and_timeframe(symbol_tf)
         bar_data = self.dict_bardata[symbol_tf].iloc[[self.dict_bardata_index[symbol_tf]]]
+        spread_points = self.back_test_spread_pips * self.symbol_specs[symbol]['pip_value']
         self.market_data[symbol] = {'bid': bar_data['Open'].iloc[0],
-                                    'ask': bar_data['Open'].iloc[0],
+                                    'ask': bar_data['Open'].iloc[0] + spread_points,
                                     'tick_value': 1}
         # Update orders in the broker
         self.manage_orders(symbol, symbol_tf)
@@ -243,7 +247,6 @@ class backtesting():
         filtered_rows = dict[dict["DateTime"] == clean_date]
         if not filtered_rows.empty:
             return filtered_rows.index[0]
-
 
     """Sends a SUBSCRIBE_SYMBOLS command to subscribe to market (tick) data.
 
@@ -592,7 +595,6 @@ class backtesting():
                                        'message': f'Successfully sent order {ticket_no}: {order_symbol}, {trade_data["type"]}, {trade_data["lots"]}, {trade_data["open_price"]}'})
         self.event_handler.on_order_event()
 
-
     def manage_orders(self, symbol, symbol_tf):
         if len(self.dict_trades) > 0:
             orders = [(ticket_no, trade_data) for ticket_no, trade_data in self.dict_trades.items() if
@@ -692,27 +694,25 @@ class backtesting():
     """
 
     def modify_order(self, ticket,
-                     lots=0.01,
-                     price=0,
-                     stop_loss=0,
-                     take_profit=0,
+                     stop_loss,
+                     take_profit,
+                     lots=0.0,
+                     price=0.0,
                      expiration=0):
-
         trade_data = self.dict_trades[ticket]
         order_status = trade_data.get('status')
-
-        if order_status == OrderStatus.PENDING:
-            trade_data['lots'] = lots
-            trade_data['price'] = price
+        if order_status in [OrderStatus.PENDING, OrderStatus.OPEN]:
             trade_data['SL'] = stop_loss
             trade_data['TP'] = take_profit
-            trade_data['expiration'] = expiration
+            if expiration > 0:
+                trade_data['expiration'] = expiration
+            if order_status == OrderStatus.PENDING:
+                if lots > 0.0:
+                    trade_data['lots'] = lots
+                if price > 0.0:
+                    trade_data['price'] = price
+            self.dict_trades[ticket] = trade_data
             self.execute_order(ticket, trade_data)
-        elif order_status == OrderStatus.OPEN:
-            trade_data['SL'] = stop_loss
-            trade_data['TP'] = take_profit
-            trade_data['expiration'] = expiration
-            self.update_order(ticket, trade_data)
 
     def validate_order(self, trade_data):
         result = False

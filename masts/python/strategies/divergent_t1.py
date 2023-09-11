@@ -7,6 +7,7 @@ from python.api.dwx_client import dwx_client
 from python.backtesting.backtesting import backtesting
 from python.common.graphics import graph_trend_from_backtesting
 from datetime import datetime
+from python.common.calculus import get_pip_value
 
 class DivergentT1(IStrategy):
 
@@ -89,19 +90,26 @@ class DivergentT1(IStrategy):
         return result
 
     def _open_orders(self, signal):
-        sltp_margen = 0.0040
+        stop_loss_pips = 40
+        tsl_margin_pips = 40
+        stop_loss_points = self.symbol_spec['pip_value'] * stop_loss_pips
+        tsl_margin_points = self.symbol_spec['pip_value'] * tsl_margin_pips
+        comment = f'tsl={tsl_margin_points}'
+
         if signal == SignalType.BUY:
             price = self.smart_trader.dma.market_data[self.symbol]['ask']
-            stop_loss = price - sltp_margen
-            take_profit = price + sltp_margen
+            stop_loss = price - stop_loss_points
+            take_profit = 0.0
             self.smart_trader.dma.open_order(symbol=self.symbol, order_type='buy', lots=0.5, price=price,
-                                             stop_loss=stop_loss, take_profit=take_profit, magic=self.magic_no)
+                                             stop_loss=stop_loss, take_profit=take_profit, magic=self.magic_no,
+                                             comment=comment)
         elif signal == SignalType.SELL:
             price = self.smart_trader.dma.market_data[self.symbol]['bid']
-            stop_loss = price + sltp_margen
-            take_profit = price - sltp_margen
+            stop_loss = price + stop_loss_points
+            take_profit = 0.0
             self.smart_trader.dma.open_order(symbol=self.symbol, order_type='sell', lots=0.5, price=price,
-                                             stop_loss=stop_loss, take_profit=take_profit, magic=self.magic_no)
+                                             stop_loss=stop_loss, take_profit=take_profit, magic=self.magic_no,
+                                             comment=comment)
 
     def _validate_historic_data(self, historic_data):
         # TODO: validate historic data
