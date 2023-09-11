@@ -13,10 +13,16 @@ def generate_report_metrics(bars_data_filename, symbol, time_frame, start_date, 
         qs.extend_pandas()
         # fetch the daily returns for a stock
         total_returns = get_trades_returns(df_bars, df_trades)
-        # generate html full report
-        report_file_name = trades_filename[:-4] + '_report_metrics.html'
-        qs.reports.html(total_returns, output=report_file_name)
-
+        # generate full metric report
+        report_file_name = trades_filename[:-4] + '_report_metrics_full.json'
+        df_metrics = qs.reports.metrics(total_returns, 'SPY', mode='full', display=False)
+        # Save report as json file
+        df_metrics.to_json(report_file_name)
+        # # Example: load existent report and access to a metric
+        # df_new = pd.read_json(report_file_name)
+        # strategy_sharpe = df_new['Strategy']['Sharpe']
+        # benchmark_sharpe = df_new['Benchmark (SPY)']['Sharpe']
+        # # End example
 
 def get_trade_returns(bars_data, trade_info):
     start_date = trade_info['open_time']
