@@ -12,6 +12,7 @@ from python.strategies.divergent_t1 import DivergentT1
 from python.strategies.istrategy import IStrategy, SignalType, MarketTrend
 from python.common.output import add_trade_to_file
 from python.common.graphics import graph_trading_results
+from python.common.calculus import calculate_trailing_stop
 
 """
 
