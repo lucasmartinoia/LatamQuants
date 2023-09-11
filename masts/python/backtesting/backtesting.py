@@ -446,6 +446,7 @@ class backtesting():
             self._execute_order(ticket_no, trade_data)
         else:  # Market orders input just now
             self.execute_order_on_tick(ticket_no, trade_data)
+            self._execute_order(ticket_no, trade_data)
 
     def _get_main_tf(self, symbol):
         return next((string for string in self.main_symbol_tfs if string.startswith(symbol)), None)
@@ -533,10 +534,22 @@ class backtesting():
                 affected_times += 1
 
         if affected_times == 1 or trade_data['type'] in ['buy', 'sell']:
+            # Check SL
             if bar_data['Low'] <= trade_data['SL'] <= bar_data['High']:
                 affected_times += 1
+            elif trade_data['type'] == 'buy' and bar_data['Open'] < trade_data['SL']:
+                affected_times += 1
+            elif trade_data['type'] == 'sell' and bar_data['Open'] > trade_data['SL']:
+                affected_times += 1
+
+            # Check TP
             if bar_data['Low'] <= trade_data['TP'] <= bar_data['High']:
                 affected_times += 1
+            elif trade_data['type'] == 'buy' and bar_data['Open'] > trade_data['TP']:
+                affected_times += 1
+            elif trade_data['type'] == 'sell' and bar_data['Open'] < trade_data['TP']:
+                affected_times += 1
+
         return affected_times
 
     def get_tick_data_for_date_range(self, symbol, init_datetime=None, end_datetime=None):
@@ -578,6 +591,7 @@ class backtesting():
         self.event_handler.on_message({'type': 'INFO',
                                        'message': f'Successfully sent order {ticket_no}: {order_symbol}, {trade_data["type"]}, {trade_data["lots"]}, {trade_data["open_price"]}'})
         self.event_handler.on_order_event()
+
 
     def manage_orders(self, symbol, symbol_tf):
         if len(self.dict_trades) > 0:
