@@ -538,20 +538,22 @@ class backtesting():
 
         if affected_times == 1 or trade_data['type'] in ['buy', 'sell']:
             # Check SL
-            if bar_data['Low'] <= trade_data['SL'] <= bar_data['High']:
-                affected_times += 1
-            elif trade_data['type'] == 'buy' and bar_data['Open'] < trade_data['SL']:
-                affected_times += 1
-            elif trade_data['type'] == 'sell' and bar_data['Open'] > trade_data['SL']:
-                affected_times += 1
+            if trade_data['SL'] > 0:
+                if bar_data['Low'] <= trade_data['SL'] <= bar_data['High']:
+                    affected_times += 1
+                elif trade_data['type'] == 'buy' and bar_data['Open'] < trade_data['SL']:
+                    affected_times += 1
+                elif trade_data['type'] == 'sell' and bar_data['Open'] > trade_data['SL']:
+                    affected_times += 1
 
             # Check TP
-            if bar_data['Low'] <= trade_data['TP'] <= bar_data['High']:
-                affected_times += 1
-            elif trade_data['type'] == 'buy' and bar_data['Open'] > trade_data['TP']:
-                affected_times += 1
-            elif trade_data['type'] == 'sell' and bar_data['Open'] < trade_data['TP']:
-                affected_times += 1
+            if trade_data['TP'] > 0:
+                if bar_data['Low'] <= trade_data['TP'] <= bar_data['High']:
+                    affected_times += 1
+                elif trade_data['type'] == 'buy' and bar_data['Open'] > trade_data['TP']:
+                    affected_times += 1
+                elif trade_data['type'] == 'sell' and bar_data['Open'] < trade_data['TP']:
+                    affected_times += 1
 
         return affected_times
 
