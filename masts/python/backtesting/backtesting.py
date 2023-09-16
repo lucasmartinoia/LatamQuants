@@ -15,6 +15,8 @@ from forex_python.converter import CurrencyRates
 from decimal import Decimal
 from python.common.files import get_bar_data_file_name, find_file
 from python.common.reports import generate_report_metrics
+from python.common.output import generate_daily_returns_file
+import shutil
 
 
 class OrderStatus(Enum):
@@ -130,11 +132,15 @@ class backtesting():
                         process = False
             self.START = process
 
+        initial_balance = self.account_info['balance']
         for symbol_tf in self.main_symbol_tfs:
             symbol, timeframe = self.extract_symbol_and_timeframe(symbol_tf)
             bar_data_file_name = get_bar_data_file_name(self.data_path, symbol, timeframe)
-            generate_report_metrics(bar_data_file_name, symbol, timeframe, self.start_datetime, self.end_datetime,
-                                    self.output_filename)
+            returns_file_name = generate_daily_returns_file(self.output_filename, symbol, initial_balance)
+            # Copy files to Jupyter Notebooks folder.
+            dest_file_name = f'C:/Users/Usuario/LatamQuants/jupyter_notes/Masts/smart_trader_output/{os.path.basename(returns_file_name)}'
+            shutil.copy(returns_file_name, dest_file_name)
+            # generate_report_metrics(symbol, returns_file_name)
             graph_trading_results(bar_data_file_name, symbol, timeframe, self.start_datetime, self.end_datetime,
                                   self.output_filename)
 

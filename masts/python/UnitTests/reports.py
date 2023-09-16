@@ -1,12 +1,19 @@
-from python.common.reports import generate_report_metrics
 from python.common.graphics import graph_trading_results
+from python.common.files import get_most_recent_file
 
 bar_data_file_name = 'C:/QuantDataManager/export/2023.9.4EURUSD_TICK_UTCPlus03-H4-No Session.csv'
 symbol = 'EURUSD'
 timeframe = 'H4'
+
+# Specific files.
 trades_filename = 'C:\Lucas\devs\GitHub\LatamQuants\masts\output/trades_20230911_134411_backtest.txt'
-start_datetime = None
-end_datetime = None
-#generate_report_metrics(bar_data_file_name, symbol, timeframe, start_datetime, end_datetime, trades_filename)
-graph_trading_results(bar_data_file_name, symbol, timeframe, start_datetime, end_datetime,
-                      trades_filename)
+returns_filename = 'C:\Lucas\devs\GitHub\LatamQuants\masts\output/trades_20230916_210415_backtest_EURUSD_returns.json'
+
+# Last files.
+trades_filename = get_most_recent_file('C:\Lucas\devs\GitHub\LatamQuants\masts\output', '_backtest.txt')
+trades_full_filename = 'C:\Lucas\devs\GitHub\LatamQuants\masts\output/' + trades_filename
+
+returns_filename = get_most_recent_file('C:\Lucas\devs\GitHub\LatamQuants\masts\output', f'_{symbol}_returns.json')
+returns_full_filename = 'C:\Lucas\devs\GitHub\LatamQuants\masts\output/' + returns_filename
+
+graph_trading_results(bar_data_file_name, symbol, timeframe, None, None, trades_full_filename)

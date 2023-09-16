@@ -1,5 +1,7 @@
 import pandas as pd
 import ast
+from python.common.files import extract_dictionaries_from_file
+from python.common.calculus import get_daily_trades_returns_on_close_date
 
 
 def add_trade_to_file(filename, dictionary):
@@ -16,4 +18,9 @@ def add_dictionary_to_file(filename, dictionary):
         file.write('\n')  # Add a new line after appending the dictionary
 
 
-
+def generate_daily_returns_file(trades_filename, symbol, investment=None):
+    df_trades = extract_dictionaries_from_file(trades_filename, symbol)
+    df_returns = get_daily_trades_returns_on_close_date(df_trades, investment)
+    returns_file_name = trades_filename[:-4] + f'_{symbol}_returns.json'
+    df_returns.to_json(returns_file_name)
+    return returns_file_name
