@@ -1,4 +1,6 @@
 import pandas as pd
+import datetime
+from forex_python.converter import CurrencyRates
 
 def calculate_trailing_stop(trade_info, market_price, margin_points):
     result = None
@@ -44,3 +46,15 @@ def get_daily_trades_returns_on_close_date(trades_info, investment = 100000.0):
         df_result.iloc[i]['Close'] = accum_return
         i = i + 1
     return df_result['Close']
+
+
+def get_exchange_rate(base_currency, quote_currency, date_time=None):
+    exchange_rate = 1.0
+    if base_currency != quote_currency:
+        if date_time is None:
+            date_time = datetime.datetime.now()
+        # Initialize CurrencyRates object
+        c = CurrencyRates(force_decimal=True)
+        # Get historic exchange rate
+        exchange_rate = float(c.get_rate(base_currency, quote_currency, date_time))
+    return exchange_rate
