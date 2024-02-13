@@ -46,10 +46,38 @@ class RiskManagement:
         logger.error(f"Ora to return: {order_risk_amount}")
         return order_risk_amount
 
+    def calculate_position_size(price, stop_loss, order_type, risk_amount):
+        """
+        Calculate position size based on risk amount.
+
+        Parameters:
+        - price: Entry price of the trade.
+        - stop_loss: Stop loss price of the trade.
+        - order_type: Order type, 'buy' or 'sell'.
+        - risk_amount: The amount of money you're willing to risk on the trade.
+
+        Returns:
+        - position_size: Size of the order in lots.
+        """
+
+        # Calculate the dollar amount at risk per unit (1 lot) based on the entry and stop loss prices
+        dollar_at_risk_per_unit = abs(price - stop_loss)
+
+        # Calculate the position size in lots using the formula: Position Size = Risk Amount / Dollar at Risk per Unit
+        position_size = risk_amount / dollar_at_risk_per_unit
+
+        # Adjust position size for sell orders (negative position size)
+        if order_type.lower() == 'sell':
+            position_size = -position_size
+
+        return position_size
+
+
     # Returns order lots for a new order taking into account risk available amount for the order in the strategy.
-    # Risk available amount have to be expressed in base currency.
+    # Risk available amount have to be expressed in base currency, min size allowed.
     def get_new_order_size(self, trade_data, date_time, risk_available_amount):
         # TODO: calculate order size
         return 0
 
-    def get_strategy_risk_available(self):
+    # TODO: this function
+    #def get_strategy_risk_available(self):
