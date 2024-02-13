@@ -146,9 +146,9 @@ class tick_processor():
                                                                    'strategies': {instance.id: hist_bars}}
             symbol_specs[strategy_params['symbol']] = strategy_params['symbol_spec']
 
+        self.dma.symbol_specs = symbol_specs
         if self.mode == "backtest":
             self.dma.main_symbol_tfs = main_strategy_symbol_tfs
-            self.dma.symbol_specs = symbol_specs
 
     def add_strategy_required_suscription(self, symbol_tf, strategy_id):
         if symbol_tf in self.required_suscriptions:
