@@ -140,7 +140,7 @@ class backtesting():
             # Copy files to Jupyter Notebooks folder.
             dest_file_name = f'C:/Users/Usuario/LatamQuants/jupyter_notes/Masts/smart_trader_output/{os.path.basename(returns_file_name)}'
             shutil.copy(returns_file_name, dest_file_name)
-            # generate_report_metrics(symbol, returns_file_name)
+            #generate_report_metrics(symbol, returns_file_name)
             graph_trading_results(bar_data_file_name, symbol, timeframe, self.start_datetime, self.end_datetime,
                                   self.output_filename)
 
