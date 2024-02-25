@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from enum import Enum
+from python.common.risk_management import RiskManagement
 
 class SignalType(Enum):
     NONE = 0
@@ -16,14 +17,18 @@ class MarketTrend(Enum):
 # Define the interface (abstract base class)
 class IStrategy(ABC):
 
-    def __init__(self, smart_trader, magic_no, symbol, timeframe, max_risk_per_trade, symbol_spec):
+    def __init__(self, smart_trader, magic_no, symbol, timeframe, max_risk_perc_trade, max_consecutive_losses, symbol_spec):
         self.smart_trader = smart_trader
         self.magic_no = magic_no
         self.symbol = symbol
         self.timeframe = timeframe
-        self.max_risk_per_trade = max_risk_per_trade
+        self.max_risk_perc_trade = max_risk_perc_trade
+        self.max_consecutive_losses = max_consecutive_losses
         self.symbol_spec = symbol_spec
         self.required_data = {}
+        self.name = "DivergentT1"
+        self.id = f"{self.name}_{symbol}_{timeframe}"
+        self.smart_trader.risk_management.set_strategy_risk(self.id, self.symbol, self.symbol_spec, self.max_risk_perc_trade, self.max_consecutive_losses)
 
     @abstractmethod
     def execute(self, historic_data):

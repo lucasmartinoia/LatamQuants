@@ -13,6 +13,7 @@ from python.strategies.istrategy import IStrategy, SignalType, MarketTrend
 from python.common.output import add_trade_to_file
 from python.common.graphics import graph_trading_results
 from python.common.calculus import calculate_trailing_stop, get_pip_value
+from python.common.risk_management import RiskManagement
 
 """
 
@@ -52,6 +53,10 @@ class tick_processor():
                  sleep_delay=0.005,  # 5 ms for time.sleep()
                  max_retry_command_seconds=10,  # retry to send the command for 10 seconds if not successful.
                  verbose=True,
+                 balance_initial_amount=0.0,
+                 balance_currency="EUR",
+                 max_risk_perc=5.0,
+                 max_drawdown_perc=20.0,
                  strategies=None
                  ):
         self.validate_parameters(mode, back_test_start, back_test_end, back_test_directory_path, MT4_directory_path)
@@ -69,6 +74,10 @@ class tick_processor():
         self.verbose = verbose
         self.time_delta_hours = time_delta_hours
         self.strategies_info = strategies
+        self.balance_initial_amount = balance_initial_amount
+        self.balance_currency = balance_currency
+        self.max_risk_perc = max_risk_perc
+        self.max_drawdown_perc = max_drawdown_perc
 
         # private info
         self.last_open_time = datetime.utcnow()
@@ -86,7 +95,7 @@ class tick_processor():
         self.output_filename = f'../output/trades_{datetime.now().strftime("%Y%m%d_%H%M%S")}_{self.mode}.txt'
         self.output_next_trade_index = 0
 
-        # set mode
+        # set DMA depending the mode.
         if self.mode == "live":
             self.dma = dwx_client(self, MT4_directory_path, sleep_delay,
                                   max_retry_command_seconds, verbose=verbose)
@@ -100,6 +109,9 @@ class tick_processor():
                                    back_test_currency,
                                    back_test_leverage)
 
+        # set Risk Management Module.
+        self.risk_management = RiskManagement(self.dma, self.balance_initial_amount, self.balance_currency, self.max_risk_perc, self.max_drawdown_perc)
+
         logger.info(f"Account info: {self.dma.account_info}")
         self.init_strategies()
         self.request_suscriptions()
@@ -108,6 +120,7 @@ class tick_processor():
             self.dma.load_historic_bars(self.required_historic_bars)
             self.dma.output_filename = self.output_filename
         self.dma.start()
+        logger.info("Smart Trader has finished!")
 
     def get_strategy_instance(self, strategy_name, strategy_params):
         result = None

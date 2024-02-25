@@ -99,7 +99,7 @@ class backtesting():
         init = 1
 
         # Main backtesting loop - multi symbol in parallel
-        while self.START:
+        while self.START and self.ACTIVE:
             process = False
 
             if init == 1:
@@ -733,7 +733,8 @@ class backtesting():
                     f"Error in trade {trade_data['ticket_no']} {trade_data['type']}: SL {trade_data['TP']} >= Price {trade_data['TP']}")
             else:
                 result = True
-        if trade_data['type'] in self.sell_order_types:
+
+        if result and trade_data['type'] in self.sell_order_types:
             if trade_data['TP'] > 0 and trade_data['TP'] >= trade_data['price']:
                 logger.error(
                     f"Error in trade {trade_data['ticket_no']} {trade_data['type']}: TP {trade_data['TP']} >= Price {trade_data['TP']}")
@@ -742,6 +743,11 @@ class backtesting():
                     f"Error in trade {trade_data['ticket_no']} {trade_data['type']}: SL {trade_data['TP']} <= Price {trade_data['TP']}")
             else:
                 result = True
+
+        if result and trade_data['lots'] == 0.0:
+            logger.error(
+                f"Error in trade {trade_data['ticket_no']} size is ZERO")
+
         return result
 
     def duplicate_order(self, ticket_no):
@@ -817,6 +823,8 @@ class backtesting():
                                                                             close_time)
         self.dict_trades[ticket]['status'] = OrderStatus.CLOSED
         self.dict_trades[ticket]['pnl'] = self._calculate_profit(trade_data)
+        # Update current balance.
+        self.account_info["balance"] = self.account_info["balance"] + self.dict_trades[ticket]['pnl']
 
     def _calculate_profit(self, trade_data):
         base_currency = trade_data['symbol'][:3]

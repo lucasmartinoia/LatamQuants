@@ -8,16 +8,15 @@ from python.backtesting.backtesting import backtesting
 from python.common.graphics import graph_trend_from_backtesting
 from datetime import datetime
 from python.common.calculus import get_pip_value
+from python.common.risk_management import RiskManagement
 
 class DivergentT1(IStrategy):
 
-    def __init__(self, smart_trader, magic_no, symbol, timeframe, max_risk_per_trade, symbol_spec=None):
-        super().__init__(smart_trader, magic_no, symbol, timeframe, max_risk_per_trade, symbol_spec)  # Call the constructor of the base class
+    def __init__(self, smart_trader, magic_no, symbol, timeframe, max_risk_perc_trade, max_consecutive_losses, symbol_spec=None):
+        super().__init__(smart_trader, magic_no, symbol, timeframe, max_risk_perc_trade, max_consecutive_losses, symbol_spec)  # Call the constructor of the base class
         self._set_required_bars()
-        self.name = "DivergentT1"
-        self.id = f"{self.name}_{symbol}_{timeframe}"
         self.historic_data = {}
-        logger.info(f"DivergentT1({symbol}, {timeframe}, {max_risk_per_trade})")
+        logger.info(f"DivergentT1({symbol}, {timeframe}, {max_risk_perc_trade}, {max_consecutive_losses})")
 
     def _set_required_bars(self):
         self.required_data = {}
@@ -95,19 +94,20 @@ class DivergentT1(IStrategy):
         stop_loss_points = self.symbol_spec['pip_value'] * stop_loss_pips
         tsl_margin_points = self.symbol_spec['pip_value'] * tsl_margin_pips
         comment = f'tsl={tsl_margin_points}'
-
         if signal == SignalType.BUY:
             price = self.smart_trader.dma.market_data[self.symbol]['ask']
             stop_loss = price - stop_loss_points
             take_profit = 0.0
-            self.smart_trader.dma.open_order(symbol=self.symbol, order_type='buy', lots=0.5, price=price,
+            order_size = self.smart_trader.risk_management.get_new_order_size(self.id, self.symbol, price, stop_loss, self.smart_trader.get_current_datetime())
+            self.smart_trader.dma.open_order(symbol=self.symbol, order_type='buy', lots=order_size, price=price,
                                              stop_loss=stop_loss, take_profit=take_profit, magic=self.magic_no,
                                              comment=comment)
         elif signal == SignalType.SELL:
             price = self.smart_trader.dma.market_data[self.symbol]['bid']
             stop_loss = price + stop_loss_points
             take_profit = 0.0
-            self.smart_trader.dma.open_order(symbol=self.symbol, order_type='sell', lots=0.5, price=price,
+            order_size = self.smart_trader.risk_management.get_new_order_size(self.id, self.symbol, price, stop_loss, self.smart_trader.get_current_datetime())
+            self.smart_trader.dma.open_order(symbol=self.symbol, order_type='sell', lots=order_size, price=price,
                                              stop_loss=stop_loss, take_profit=take_profit, magic=self.magic_no,
                                              comment=comment)
 

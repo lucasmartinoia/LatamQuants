@@ -58,3 +58,10 @@ def get_exchange_rate(base_currency, quote_currency, date_time=None):
         # Get historic exchange rate
         exchange_rate = float(c.get_rate(base_currency, quote_currency, date_time))
     return exchange_rate
+
+def normalize_order_size(calculated_size, min_volume):
+    decimal_places = len(str(min_volume).split(".")[1])
+    normalized_size = float(f'{calculated_size:.{decimal_places}f}')
+    if normalized_size < min_volume:
+        normalized_size = 0.0
+    return normalized_size
