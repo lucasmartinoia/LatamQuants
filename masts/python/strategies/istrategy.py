@@ -13,6 +13,12 @@ class MarketTrend(Enum):
     BEAR = 2
     SIDEWAYS = 3
 
+class MarketEnergy(Enum):
+    NOT_SIGNIFICANT = 0
+    VERY_HIGH = 1
+    HIGH = 2
+    LOW = 3
+    VERY_LOW = 4
 
 # Define the interface (abstract base class)
 class IStrategy(ABC):

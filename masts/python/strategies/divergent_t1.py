@@ -1,7 +1,7 @@
 import talib
 from python.common.logging_config import logger
-from python.strategies.istrategy import IStrategy, SignalType, MarketTrend
-from python.indicators.macd_platinum_v2 import macd_platinum_v2
+from python.strategies.istrategy import IStrategy, SignalType, MarketTrend, MarketEnergy
+from python.indicators.choppiness_index import choppiness_index
 from python.common.conversions import convert_historic_bars_to_dataframe
 from python.api.dwx_client import dwx_client
 from python.backtesting.backtesting import backtesting
@@ -20,8 +20,9 @@ class DivergentT1(IStrategy):
 
     def _set_required_bars(self):
         self.required_data = {}
-        self.required_data[f"{self.symbol}_{self.timeframe}"] = 350
-        self.required_data[f"{self.symbol}_M1"] = 120
+        self.required_data[f"{self.symbol}_{self.timeframe}"] = 100
+        self.required_data[f"{self.symbol}_H1"] = 100
+        self.required_data[f"{self.symbol}_M15"] = 100
 
     def _get_signal(self, market_trend):
         result = SignalType.NONE
@@ -33,54 +34,77 @@ class DivergentT1(IStrategy):
         logger.debug(f"_get_signal() -> {result}")
         return result
 
-    def _get_trend_from_emas(self, ema_values_1, ema_values_2, ema_values_3, periods=3):
-        # Ensure we have at least 3 values in each EMA series
-        if len(ema_values_1) < periods or len(ema_values_2) < periods or len(ema_values_3) < periods:
-            raise ValueError("Each EMA series should have at least 3 values.")
+    def _get_trend_from_timeframe(self, time_frame):
+        result = MarketTrend.UNDEFINED
+        trend_ema = self._get_trend_ema(time_frame)
+        energy_chopp = self._get_energy_choppiness_index(time_frame)
+        if trend_ema == MarketTrend.BULL and (energy_chopp == MarketEnergy.VERY_HIGH or energy_chopp == MarketEnergy.HIGH):
+            result = MarketTrend.BULL
+        elif trend_ema == MarketTrend.BEAR and (energy_chopp == MarketEnergy.VERY_LOW or energy_chopp == MarketEnergy.LOW):
+            result = MarketTrend.BEAR
+        return result
+
+    def _get_trend_ema(self, time_frame):
+        periods = 10.0
+        timeperiod = 50
+        min_slope = 0.30
+        result = MarketTrend.UNDEFINED
+        symbol_tf = f"{self.symbol}_{time_frame}"
+        data = self.historic_data[symbol_tf]['data'].copy()
+        df = convert_historic_bars_to_dataframe(data)
+        close_prices = df['close']
+        ema_values = talib.EMA(close_prices, timeperiod=timeperiod)
 
         # Get the last 3 values of each EMA series
-        ema_values_1 = ema_values_1[-periods:]
-        ema_values_2 = ema_values_2[-periods:]
-        ema_values_3 = ema_values_3[-periods:]
-
+        ema_values = ema_values[-periods:]
         last_candle = periods-1
         oldest_candle = 0
 
-        # Check if EMA_values_1 has a positive slope and is above the other two EMAs
-        if ema_values_1[oldest_candle] < ema_values_1[last_candle] and ema_values_1[last_candle] > ema_values_2[last_candle] and ema_values_1[last_candle] > ema_values_3[last_candle]:
-            # Check if EMA_values_2 is above EMA_values_3
-            if ema_values_2[last_candle] > ema_values_3[last_candle]:
-                return MarketTrend.BULL
+        # Check if EMA_values has a positive slope.
+        slope = (ema_values[last_candle] - ema_values[oldest_candle]) / periods
+        if slope > 0.0 and slope > min_slope:
+            result = MarketTrend.BULL
+        elif slope < 0.0 and slope < (min_slope * (-1)):
+            result = MarketTrend.BEAR
 
-        # Check if EMA_values_1 has a negative slope and is below the other two EMAs
-        if ema_values_1[oldest_candle] > ema_values_1[last_candle] and ema_values_1[last_candle] < ema_values_2[last_candle] and ema_values_1[last_candle] < ema_values_3[last_candle]:
-            # Check if EMA_values_2 is below EMA_values_3
-            if ema_values_2[last_candle] < ema_values_3[last_candle]:
-                return MarketTrend.BEAR
+        return result
 
-        return MarketTrend.UNDEFINED
+    def _get_energy_choppiness_index(self, time_frame):
+        timeperiod = 14
+        periods = 5
+        result = MarketEnergy.NOT_SIGNIFICANT
+        symbol_tf = f"{self.symbol}_{time_frame}"
+        data = self.historic_data[symbol_tf]['data'].copy()
+        df = convert_historic_bars_to_dataframe(data)
+        close_prices = df['close']
+        chopp_values = choppiness_index.calculate(close_prices, timeperiod)
+        chopp_values = chopp_values[-periods:]
+        last_candle = periods-1
+        last_value = chopp_values[last_candle]
+
+        # Determine energy.
+        if last_value >= 61.8:
+            result = MarketEnergy.VERY_HIGH
+        elif 61.8 > last_value >= 55.0:
+            result = MarketEnergy.HIGH
+        elif 25.0 < last_value <= 38.2:
+            result = MarketEnergy.LOW
+        elif last_value <= 25.0:
+            result = MarketEnergy.VERY_LOW
+        else:
+            result = MarketEnergy.NOT_SIGNIFICANT
+
+        return result
 
     def _get_market_trend(self):
         logger.info("_get_market_trend() -> Starts")
         result = MarketTrend.UNDEFINED
+        anchor_trend = self._get_trend_from_timeframe(self.timeframe)
+        if anchor_trend != MarketTrend.UNDEFINED:
+            middle_trend = self._get_trend_from_timeframe("H1")
+            if anchor_trend == middle_trend:
+                result = anchor_trend
 
-        # Use 3 EMAs: 50, 100 and 240 in main timeframe
-        symbol_tf = f"{self.symbol}_{self.timeframe}"
-        data = self.historic_data[symbol_tf]['data'].copy()
-        df = convert_historic_bars_to_dataframe(data)
-        close_prices = df['close']
-        ema_50_values = talib.EMA(close_prices, timeperiod=50)
-        ema_100_values = talib.EMA(close_prices, timeperiod=100)
-        ema_240_values = talib.EMA(close_prices, timeperiod=240)
-        result = self._get_trend_from_emas(ema_50_values, ema_100_values, ema_240_values)
-        max_datetime = max([datetime.strptime(key, '%Y.%m.%d %H:%M') for key in data.keys()])
-
-        #if max_datetime >= datetime.strptime('2023.08.01 00:00', '%Y.%m.%d %H:%M'):
-        #    logger.debug(f"_get_market_trend() -> data = {data}")
-        #    logger.debug(f"_get_market_trend() -> df = {df}")
-        #    graph_trend_from_backtesting(data, self.symbol, self.timeframe, ema_50_values, ema_100_values, ema_240_values)
-
-        logger.info(f"ema50 [{ema_50_values[-3:]}], ema100 [{ema_100_values[-3:]}], ema240 [{ema_240_values[-3:]}]")
         logger.info(f"_get_market_trend() -> result [{result}]")
         return result
 
