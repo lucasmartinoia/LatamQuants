@@ -1,13 +1,25 @@
-import numpy as np
+from numpy import log10 as npLog10
+import talib
 
 class choppiness_index:
     @staticmethod
-    def calculate(close_prices, period=14):
-        high_price = np.max(close_prices[-period:])
-        low_price = np.min(close_prices[-period:])
-        price_range = high_price - low_price
+    def calculate(high, low, close, length=14, atr_length=None, ln=None, scalar=None):
+        """Indicator: Choppiness Index (CHOP)"""
+        # Validate Arguments
+        length = int(length) if length and length > 0 else 14
+        atr_length = int(atr_length) if atr_length is not None and atr_length > 0 else 1
+        ln = bool(ln) if isinstance(ln, bool) else False
+        scalar = float(scalar) if scalar else 100
 
-        volatility = np.mean(np.abs(np.diff(close_prices[-period:])))
+        if high is None or low is None or close is None: return
 
-        choppiness = 100 * np.log10((price_range / volatility) / np.log10(period))
-        return choppiness
+        # Calculate Result
+        diff = high.rolling(length).max() - low.rolling(length).min()
+
+        atr_ = talib.ATR(high=high, low=low, close=close, timeperiod=atr_length)
+        atr_sum = atr_.rolling(length).sum()
+
+        chop = scalar
+        chop *= npLog10(atr_sum / diff) / npLog10(length)
+
+        return chop

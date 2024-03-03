@@ -9,6 +9,7 @@ from python.common.graphics import graph_trend_from_backtesting
 from datetime import datetime
 from python.common.calculus import get_pip_value
 from python.common.risk_management import RiskManagement
+import math
 
 class DivergentT1(IStrategy):
 
@@ -23,31 +24,45 @@ class DivergentT1(IStrategy):
         self.required_data[f"{self.symbol}_{self.timeframe}"] = 100
         self.required_data[f"{self.symbol}_H1"] = 100
         self.required_data[f"{self.symbol}_M15"] = 100
+        self.required_data[f"{self.symbol}_M1"] = 100
 
     def _get_signal(self, market_trend):
         result = SignalType.NONE
-        if market_trend == MarketTrend.BULL:
-            result = SignalType.BUY
-        elif market_trend == MarketTrend.BEAR:
-            result = SignalType.SELL
+        signal_periods = 10
+        if market_trend == MarketTrend.BULL or market_trend == MarketTrend.BEAR:
+            highest_price, lowest_price = self._get_box_higher_lower("M15", signal_periods)
+            current_ask = self.smart_trader.dma.market_data[self.symbol]['ask']
+            current_bid = self.smart_trader.dma.market_data[self.symbol]['bid']
+            if market_trend == MarketTrend.BULL and current_ask >= highest_price:
+                result = SignalType.BUY
+            elif market_trend == MarketTrend.BEAR and current_bid <= lowest_price:
+                result = SignalType.SELL
 
         logger.debug(f"_get_signal() -> {result}")
         return result
 
-    def _get_trend_from_timeframe(self, time_frame):
+    def _get_box_higher_lower(self, time_frame, periods):
+        symbol_tf = f"{self.symbol}_{time_frame}"
+        data = self.historic_data[symbol_tf]['data'][-periods:].copy()
+        df = convert_historic_bars_to_dataframe(data)
+        highest_price = df['high'].max()
+        lowest_price = df['low'].min()
+        return highest_price, lowest_price
+
+    def _get_trend_from_timeframe(self, time_frame, energy_minim=None):
         result = MarketTrend.UNDEFINED
         trend_ema = self._get_trend_ema(time_frame)
-        energy_chopp = self._get_energy_choppiness_index(time_frame)
-        if trend_ema == MarketTrend.BULL and (energy_chopp == MarketEnergy.VERY_HIGH or energy_chopp == MarketEnergy.HIGH):
-            result = MarketTrend.BULL
-        elif trend_ema == MarketTrend.BEAR and (energy_chopp == MarketEnergy.VERY_LOW or energy_chopp == MarketEnergy.LOW):
-            result = MarketTrend.BEAR
+
+        if trend_ema != MarketTrend.UNDEFINED and trend_ema != MarketTrend.SIDEWAYS:
+            energy_chopp, energy_value = self._get_energy_choppiness_index(time_frame)
+            if (energy_minim is None and (energy_chopp == MarketEnergy.VERY_HIGH or energy_chopp == MarketEnergy.HIGH)) or (energy_value >= energy_minim):
+                result = trend_ema
         return result
 
     def _get_trend_ema(self, time_frame):
-        periods = 10.0
+        periods = 10
         timeperiod = 50
-        min_slope = 0.30
+        min_slope = 30.0
         result = MarketTrend.UNDEFINED
         symbol_tf = f"{self.symbol}_{time_frame}"
         data = self.historic_data[symbol_tf]['data'].copy()
@@ -59,14 +74,21 @@ class DivergentT1(IStrategy):
         ema_values = ema_values[-periods:]
         last_candle = periods-1
         oldest_candle = 0
+        max_value = ema_values.max()
+        min_value = ema_values.min()
 
         # Check if EMA_values has a positive slope.
+        logger.debug(f'time_frame = {time_frame}, ema_50_last_value = {ema_values[last_candle]}, ema_50_oldest_value = {ema_values[oldest_candle]}, periods = {periods}')
         slope = (ema_values[last_candle] - ema_values[oldest_candle]) / periods
-        if slope > 0.0 and slope > min_slope:
+        slope = (slope - min_value) / (max_value - min_value)   # normalization
+        angle_radians = math.atan(slope)
+        slope_angle = math.degrees(angle_radians)
+        logger.debug(f'slope_angle = {slope_angle}, Bull trend = {slope_angle > 0.0 and slope_angle > min_slope}, Bear trend = {slope_angle < 0.0 and slope_angle < (min_slope * (-1))}')
+        if slope_angle > 0.0 and slope_angle > min_slope:
             result = MarketTrend.BULL
-        elif slope < 0.0 and slope < (min_slope * (-1)):
+        elif slope_angle < 0.0 and slope_angle < (min_slope * (-1)):
             result = MarketTrend.BEAR
-
+        logger.debug(f'result = {result}')
         return result
 
     def _get_energy_choppiness_index(self, time_frame):
@@ -77,10 +99,11 @@ class DivergentT1(IStrategy):
         data = self.historic_data[symbol_tf]['data'].copy()
         df = convert_historic_bars_to_dataframe(data)
         close_prices = df['close']
-        chopp_values = choppiness_index.calculate(close_prices, timeperiod)
+        chopp_values = choppiness_index.calculate(df['high'], df['low'], df['close'], timeperiod)
         chopp_values = chopp_values[-periods:]
         last_candle = periods-1
         last_value = chopp_values[last_candle]
+        logger.debug(f'time_frame = {time_frame}, choppiness index last value = {last_value}')
 
         # Determine energy.
         if last_value >= 61.8:
@@ -94,14 +117,17 @@ class DivergentT1(IStrategy):
         else:
             result = MarketEnergy.NOT_SIGNIFICANT
 
-        return result
+        logger.debug(f'result = {result}, last_value = {last_value}')
+        return result, last_value
 
     def _get_market_trend(self):
+        anchor_minim_energy_level = 40.0
+        middle_minim_energy_level = 45.0
         logger.info("_get_market_trend() -> Starts")
         result = MarketTrend.UNDEFINED
-        anchor_trend = self._get_trend_from_timeframe(self.timeframe)
+        anchor_trend = self._get_trend_from_timeframe(self.timeframe, anchor_minim_energy_level)
         if anchor_trend != MarketTrend.UNDEFINED:
-            middle_trend = self._get_trend_from_timeframe("H1")
+            middle_trend = self._get_trend_from_timeframe("H1", middle_minim_energy_level)
             if anchor_trend == middle_trend:
                 result = anchor_trend
 
