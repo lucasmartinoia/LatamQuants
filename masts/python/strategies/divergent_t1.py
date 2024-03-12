@@ -12,19 +12,22 @@ from python.common.risk_management import RiskManagement
 import math
 
 class DivergentT1(IStrategy):
+    _market_trend = MarketTrend.UNDEFINED
+    _box_high_limit = 0.0
+    _box_low_limit = 0.0
 
-    def __init__(self, smart_trader, magic_no, symbol, timeframe, max_risk_perc_trade, max_consecutive_losses, symbol_spec=None):
-        super().__init__(smart_trader, magic_no, symbol, timeframe, max_risk_perc_trade, max_consecutive_losses, symbol_spec)  # Call the constructor of the base class
+    def __init__(self, smart_trader, magic_no, symbol, timeframe, high_timeframe1, high_timeframe2, signal_timeframe, max_risk_perc_trade, max_consecutive_losses, symbol_spec=None):
+        super().__init__(smart_trader, magic_no, symbol, timeframe, high_timeframe1, high_timeframe2, signal_timeframe, max_risk_perc_trade, max_consecutive_losses, symbol_spec)  # Call the constructor of the base class
         self._set_required_bars()
         self.historic_data = {}
         logger.info(f"DivergentT1({symbol}, {timeframe}, {max_risk_perc_trade}, {max_consecutive_losses})")
 
     def _set_required_bars(self):
         self.required_data = {}
-        self.required_data[f"{self.symbol}_{self.timeframe}"] = 100
-        self.required_data[f"{self.symbol}_H1"] = 100
-        self.required_data[f"{self.symbol}_M15"] = 100
-        self.required_data[f"{self.symbol}_M1"] = 100
+        self.required_data[f"{self.symbol}_{self.high_timeframe1}"] = 100
+        self.required_data[f"{self.symbol}_{self.high_timeframe2}"] = 100
+        self.required_data[f"{self.symbol}_{self.timeframe}"] = 100  # Main timeframe to evaluate trend.
+        self.required_data[self.signal_timeframe] = 5 # Used only for backtesting to avoid tick data level and improve the process speed.
 
     def _get_signal(self, market_trend):
         result = SignalType.NONE
@@ -172,8 +175,11 @@ class DivergentT1(IStrategy):
     def required_data(self):
         return self.required_data
 
-    def execute(self, historic_data):
-        logger.info(f"DivergentT1 -> execute()")
+    def calculate_trend(self, historic_data):
+        logger.info(f"DivergentT1 -> calculate_trend()")
+        self._market_trend = MarketTrend.UNDEFINED
+        self._box_high_limit = 0.0
+        self._box_low_limit = 0.0
         self.historic_data = self._validate_historic_data(historic_data)
 
         # Manage current open orders
@@ -181,10 +187,36 @@ class DivergentT1(IStrategy):
             self.manage_orders()
         elif self.historic_data is not None:
             # Open orders only if there isn't any open trade for the strategy
-            marketTrend = self._get_market_trend()
-            if marketTrend != MarketTrend.UNDEFINED and marketTrend != MarketTrend.SIDEWAYS:
-                signal = self._get_signal(marketTrend)
-                self._open_orders(signal)
+            self._market_trend = self._get_market_trend()
+
+        box_periods = 10
+        if self._market_trend == MarketTrend.BULL or self._market_trend == MarketTrend.BEAR:
+            self._box_high_limit, self._box_low_limit = self._get_box_higher_lower("M15", box_periods)
+
+    def check_signal_from_historic_bar(self, historic_data):
+        data = self.historic_data[self.signal_timeframe]['data'].copy()
+        df = convert_historic_bars_to_dataframe(data)
+        ask = df['high'].iloc(-1)
+        bid = df['low'].iloc(-1)
+        self.check_signal(ask,bid)
+
+    def check_signal(self, ask = None, bid = None):
+        # Parameters are received only in case of backtesting.
+        if ask is None and bid is None:
+            ask = self.smart_trader.dma.market_data[self.symbol]['ask']
+            bid = self.smart_trader.dma.market_data[self.symbol]['bid']
+
+            if self._market_trend == MarketTrend.BULL and ask >= self._box_high_limit:
+                self._open_orders(SignalType.BUY)
+            elif self._market_trend == MarketTrend.BEAR and bid <= self._box_low_limit:
+                self._open_orders(SignalType.SELL)
+        else:
+            # For backtesting (due the information ask and bid are high and low of signal_tf instead of tick data), we check that both limits where not riched.
+            # It could reduce the number of signals but it's better for performance.
+            if self._market_trend == MarketTrend.BULL and ask >= self._box_high_limit and not (bid <= self._box_low_limit):
+                self._open_orders(SignalType.BUY)
+            elif self._market_trend == MarketTrend.BEAR and bid <= self._box_low_limit and not (ask >= self._box_high_limit):
+                self._open_orders(SignalType.SELL)
 
     def manage_orders(self):
         # TODO: implement manage_orders() -> trailing stoploss / hidden take profit or stop loss.

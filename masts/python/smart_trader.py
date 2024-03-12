@@ -140,10 +140,13 @@ class tick_processor():
             self.strategies_instances[instance.id] = {'instance': instance, 'params': strategy_params}
 
             # Add to subscriptions
-            symbol_tf = f"{strategy_params['symbol']}_TICK"
-            self.add_strategy_required_suscription(symbol_tf, instance.id)
+            symbol_tf_tick = f"{strategy_params['symbol']}_TICK"
+            self.add_strategy_required_suscription(symbol_tf_tick, instance.id)
             symbol_tf = f"{strategy_params['symbol']}_{strategy_params['timeframe']}"
             self.add_strategy_required_suscription(symbol_tf, instance.id)
+            signal_symbol_tf = strategy_params['signal_timeframe']
+            if signal_symbol_tf != symbol_tf_tick:
+                self.add_strategy_required_suscription(signal_symbol_tf, instance.id)
             main_strategy_symbol_tfs.append(symbol_tf)
 
             # Add to required historic data
@@ -231,6 +234,7 @@ class tick_processor():
                 value['params']['symbol'] == symbol]
         for strategy_key in keys:
             self.strategies_instances[strategy_key]['instance'].manage_orders()
+            self.strategies_instances[strategy_key]['instance'].check_signal()
 
         # to test trading. 
         # this will randomly try to open and close orders every few seconds. 
@@ -269,7 +273,6 @@ class tick_processor():
 
         # Manage trailing stop loss orders
         self.process_trailing_stop_loss()
-
         self.request_historic_data(symbol, time_frame)
 
         # if self.minute_counter == 1:
@@ -299,17 +302,23 @@ class tick_processor():
             bars = self.required_historic_bars[key_symbol_tf]['max_bars']
             self.get_historic_bars(key_symbol, key_tf, bars)
 
-    def send_historic_data_to_strategies(self, symbol):
+    def send_historic_data_to_strategies(self, symbol, time_frame):
+        call_origin_tf = f'{symbol}_{time_frame}'
         updated_symbol_tfs = [key for key, value in self.historic_data.items() if
                               key.startswith(symbol) and value['timestamp'] == self.historic_request_last_timestamp[
                                   symbol]]
-        all_symbol_tfs = [key for key, value in self.historic_data.items() if key.startswith(symbol)]
+        #all_symbol_tfs = [key for key, value in self.historic_data.items() if key.startswith(symbol)]
+        all_symbol_tfs = [key for key, value in self.required_historic_bars.items() if key.startswith(symbol)]
         if len(updated_symbol_tfs) == len(all_symbol_tfs):  # all historic requests for the symbol were completed.
             historic_data_to_send = dict(filter(lambda item: item[0] in all_symbol_tfs, self.historic_data.items()))
             keys = [key for key, value in self.strategies_instances.items() if
                     value['params']['symbol'] == symbol]
             for strategy_key in keys:
-                self.strategies_instances[strategy_key]['instance'].execute(historic_data_to_send)
+                signal_tf = self.strategies_instances[strategy_key]['params']['signal_timeframe']
+                if signal_tf == call_origin_tf:
+                    self.strategies_instances[strategy_key]['instance'].check_signal_from_historic_bar(historic_data_to_send)
+                else:
+                    self.strategies_instances[strategy_key]['instance'].calculate_trend(historic_data_to_send)
 
     def on_historic_data(self, symbol, time_frame, data):
         symbol_tf = f"{symbol}_{time_frame}"
@@ -320,7 +329,7 @@ class tick_processor():
                                                         'data': data}
         logger.debug(
             f'on_historic_data() => {symbol}, {time_frame}, {len(data)} bars, last bar datetime -> {list(data.keys())[-1]}, current datetime -> {self.get_current_datetime()}')
-        self.send_historic_data_to_strategies(symbol)
+        self.send_historic_data_to_strategies(symbol, time_frame)
 
         # # Example about how to call an indicator.
         # close_prices = convert_historic_bars_element_to_array('close', data)

@@ -23,11 +23,14 @@ class MarketEnergy(Enum):
 # Define the interface (abstract base class)
 class IStrategy(ABC):
 
-    def __init__(self, smart_trader, magic_no, symbol, timeframe, max_risk_perc_trade, max_consecutive_losses, symbol_spec):
+    def __init__(self, smart_trader, magic_no, symbol, timeframe, high_timeframe1, high_timeframe2, signal_timeframe, max_risk_perc_trade, max_consecutive_losses, symbol_spec):
         self.smart_trader = smart_trader
         self.magic_no = magic_no
         self.symbol = symbol
         self.timeframe = timeframe
+        self.high_timeframe1 = high_timeframe1
+        self.high_timeframe2 = high_timeframe2
+        self.signal_timeframe = signal_timeframe
         self.max_risk_perc_trade = max_risk_perc_trade
         self.max_consecutive_losses = max_consecutive_losses
         self.symbol_spec = symbol_spec
@@ -37,7 +40,11 @@ class IStrategy(ABC):
         self.smart_trader.risk_management.set_strategy_risk(self.id, self.symbol, self.symbol_spec, self.max_risk_perc_trade, self.max_consecutive_losses)
 
     @abstractmethod
-    def execute(self, historic_data):
+    def check_signal(self, ask = None, bid = None):
+        pass
+
+    @abstractmethod
+    def check_signal_from_historic_bar(self, historic_data):
         pass
 
     @abstractmethod
@@ -47,3 +54,8 @@ class IStrategy(ABC):
     @abstractmethod
     def required_data(self):
         pass
+
+    @abstractmethod
+    def calculate_trend(self, historic_data):
+        pass
+
