@@ -27,7 +27,7 @@ class DivergentT1(IStrategy):
         self.required_data[f"{self.symbol}_{self.high_timeframe1}"] = 100
         self.required_data[f"{self.symbol}_{self.high_timeframe2}"] = 100
         self.required_data[f"{self.symbol}_{self.timeframe}"] = 100  # Main timeframe to evaluate trend.
-        self.required_data[self.signal_timeframe] = 5 # Used only for backtesting to avoid tick data level and improve the process speed.
+        self.required_data[f"{self.symbol}_{self.signal_timeframe}"] = 5 # Used only for backtesting to avoid tick data level and improve the process speed.
 
     def _get_signal(self, market_trend):
         result = SignalType.NONE

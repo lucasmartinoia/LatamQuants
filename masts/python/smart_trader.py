@@ -144,7 +144,7 @@ class tick_processor():
             self.add_strategy_required_suscription(symbol_tf_tick, instance.id)
             symbol_tf = f"{strategy_params['symbol']}_{strategy_params['timeframe']}"
             self.add_strategy_required_suscription(symbol_tf, instance.id)
-            signal_symbol_tf = strategy_params['signal_timeframe']
+            signal_symbol_tf = f"{strategy_params['symbol']}_{strategy_params['signal_timeframe']}"
             if signal_symbol_tf != symbol_tf_tick:
                 self.add_strategy_required_suscription(signal_symbol_tf, instance.id)
             main_strategy_symbol_tfs.append(symbol_tf)
