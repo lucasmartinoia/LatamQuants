@@ -327,9 +327,10 @@ class tick_processor():
         # Store data.
         self.historic_data[f'{symbol}_{time_frame}'] = {'timestamp': self.historic_request_last_timestamp[symbol],
                                                         'data': data}
-        logger.debug(
-            f'on_historic_data() => {symbol}, {time_frame}, {len(data)} bars, last bar datetime -> {list(data.keys())[-1]}, current datetime -> {self.get_current_datetime()}')
-        self.send_historic_data_to_strategies(symbol, time_frame)
+        if data is not None:
+            logger.debug(
+                f'on_historic_data() => {symbol}, {time_frame}, {len(data)} bars, last bar datetime -> {list(data.keys())[-1]}, current datetime -> {self.get_current_datetime()}')
+            self.send_historic_data_to_strategies(symbol, time_frame)
 
         # # Example about how to call an indicator.
         # close_prices = convert_historic_bars_element_to_array('close', data)

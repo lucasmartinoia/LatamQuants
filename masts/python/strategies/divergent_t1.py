@@ -46,7 +46,9 @@ class DivergentT1(IStrategy):
 
     def _get_box_higher_lower(self, time_frame, periods):
         symbol_tf = f"{self.symbol}_{time_frame}"
-        data = self.historic_data[symbol_tf]['data'][-periods:].copy()
+        data = self.historic_data[symbol_tf]['data'].copy()
+        keys = list(data.keys())[-periods:]
+        data = {key: data[key] for key in keys}
         df = convert_historic_bars_to_dataframe(data)
         highest_price = df['high'].max()
         lowest_price = df['low'].min()
