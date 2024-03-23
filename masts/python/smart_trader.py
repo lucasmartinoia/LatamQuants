@@ -266,8 +266,8 @@ class tick_processor():
 
     def on_bar_data(self, symbol, time_frame, time, open_price, high, low, close_price, tick_volume):
         # logger.debug(f'current_datetime -> {self.get_current_datetime(symbol)}')
-        logger.debug(
-            f'on_bar_data() => {symbol}, {time_frame}, time:{time}, open:{open_price}, high:{high}, low:{low}, close:{close_price}, vol:{tick_volume}')
+        #logger.debug(
+        #    f'on_bar_data() => {symbol}, {time_frame}, time:{time}, open:{open_price}, high:{high}, low:{low}, close:{close_price}, vol:{tick_volume}')
         # logger.debug(f'bar_data: {self.dma.bar_data}')
         # logger.debug(f'market_data: {self.dma.market_data}')
 
@@ -314,7 +314,7 @@ class tick_processor():
             keys = [key for key, value in self.strategies_instances.items() if
                     value['params']['symbol'] == symbol]
             for strategy_key in keys:
-                signal_tf = self.strategies_instances[strategy_key]['params']['signal_timeframe']
+                signal_tf = f'{symbol}_{self.strategies_instances[strategy_key]["params"]["signal_timeframe"]}'
                 if signal_tf == call_origin_tf:
                     self.strategies_instances[strategy_key]['instance'].check_signal_from_historic_bar(historic_data_to_send)
                 else:
@@ -327,9 +327,12 @@ class tick_processor():
         # Store data.
         self.historic_data[f'{symbol}_{time_frame}'] = {'timestamp': self.historic_request_last_timestamp[symbol],
                                                         'data': data}
-        if data is not None:
-            logger.debug(
-                f'on_historic_data() => {symbol}, {time_frame}, {len(data)} bars, last bar datetime -> {list(data.keys())[-1]}, current datetime -> {self.get_current_datetime()}')
+
+        if data is None or len(data) == 0:
+            logger.error(f'No historic data received for symbol: {symbol}, time_frame: {time_frame}')
+        else:
+            #logger.debug(
+            #    f'on_historic_data() => {symbol}, {time_frame}, {len(data)} bars, last bar datetime -> {list(data.keys())[-1]}, current datetime -> {self.get_current_datetime()}')
             self.send_historic_data_to_strategies(symbol, time_frame)
 
         # # Example about how to call an indicator.

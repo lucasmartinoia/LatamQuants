@@ -733,8 +733,7 @@ class backtesting():
                     f"Error in trade {trade_data['ticket_no']} {trade_data['type']}: SL {trade_data['TP']} >= Price {trade_data['TP']}")
             else:
                 result = True
-
-        if result and trade_data['type'] in self.sell_order_types:
+        elif trade_data['type'] in self.sell_order_types:
             if trade_data['TP'] > 0 and trade_data['TP'] >= trade_data['price']:
                 logger.error(
                     f"Error in trade {trade_data['ticket_no']} {trade_data['type']}: TP {trade_data['TP']} >= Price {trade_data['TP']}")

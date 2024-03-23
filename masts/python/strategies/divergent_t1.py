@@ -196,10 +196,10 @@ class DivergentT1(IStrategy):
             self._box_high_limit, self._box_low_limit = self._get_box_higher_lower("M15", box_periods)
 
     def check_signal_from_historic_bar(self, historic_data):
-        data = self.historic_data[self.signal_timeframe]['data'].copy()
+        data = historic_data[f'{self.symbol}_{self.signal_timeframe}']['data'].copy()
         df = convert_historic_bars_to_dataframe(data)
-        ask = df['high'].iloc(-1)
-        bid = df['low'].iloc(-1)
+        ask = df['high'][-1]
+        bid = df['low'][-1]
         self.check_signal(ask,bid)
 
     def check_signal(self, ask = None, bid = None):
