@@ -10,6 +10,7 @@ from datetime import datetime
 from python.common.calculus import get_pip_value
 from python.common.risk_management import RiskManagement
 import math
+import numpy as np
 
 class DivergentT1(IStrategy):
     _market_trend = MarketTrend.UNDEFINED
@@ -67,7 +68,7 @@ class DivergentT1(IStrategy):
     def _get_trend_ema(self, time_frame):
         periods = 10
         timeperiod = 50
-        min_slope = 30.0
+        min_slope = 2.0
         result = MarketTrend.UNDEFINED
         symbol_tf = f"{self.symbol}_{time_frame}"
         data = self.historic_data[symbol_tf]['data'].copy()
@@ -79,19 +80,17 @@ class DivergentT1(IStrategy):
         ema_values = ema_values[-periods:]
         last_candle = periods-1
         oldest_candle = 0
-        max_value = ema_values.max()
-        min_value = ema_values.min()
-
         # Check if EMA_values has a positive slope.
         logger.debug(f'time_frame = {time_frame}, ema_50_last_value = {ema_values[last_candle]}, ema_50_oldest_value = {ema_values[oldest_candle]}, periods = {periods}')
-        slope = (ema_values[last_candle] - ema_values[oldest_candle]) / periods
-        slope = (slope - min_value) / (max_value - min_value)   # normalization
+        delta_y = (ema_values[last_candle] - ema_values[oldest_candle]) / self.symbol_spec['pip_value']
+        delta_x = periods
+        slope = delta_y / delta_x
         angle_radians = math.atan(slope)
-        slope_angle = math.degrees(angle_radians)
-        logger.debug(f'slope_angle = {slope_angle}, Bull trend = {slope_angle > 0.0 and slope_angle > min_slope}, Bear trend = {slope_angle < 0.0 and slope_angle < (min_slope * (-1))}')
-        if slope_angle > 0.0 and slope_angle > min_slope:
+        angle_grades = math.degrees(angle_radians)
+        logger.debug(f'slope_angle = {angle_grades}, Bull trend = {angle_grades > 0.0 and angle_grades > min_slope}, Bear trend = {angle_grades < 0.0 and angle_grades < (min_slope * (-1))}')
+        if angle_grades > 0.0 and angle_grades > min_slope:
             result = MarketTrend.BULL
-        elif slope_angle < 0.0 and slope_angle < (min_slope * (-1)):
+        elif angle_grades < 0.0 and angle_grades < (min_slope * (-1)):
             result = MarketTrend.BEAR
         logger.debug(f'result = {result}')
         return result
@@ -122,7 +121,7 @@ class DivergentT1(IStrategy):
         else:
             result = MarketEnergy.NOT_SIGNIFICANT
 
-        logger.debug(f'result = {result}, last_value = {last_value}')
+        logger.debug(f'{self.smart_trader.get_current_datetime()} -> result = {result}, last_value = {last_value}')
         return result, last_value
 
     def _get_market_trend(self):
@@ -130,13 +129,13 @@ class DivergentT1(IStrategy):
         middle_minim_energy_level = 45.0
         logger.info("_get_market_trend() -> Starts")
         result = MarketTrend.UNDEFINED
-        anchor_trend = self._get_trend_from_timeframe(self.timeframe, anchor_minim_energy_level)
+        anchor_trend = self._get_trend_from_timeframe(self.high_timeframe1, anchor_minim_energy_level)
         if anchor_trend != MarketTrend.UNDEFINED:
-            middle_trend = self._get_trend_from_timeframe("H1", middle_minim_energy_level)
+            middle_trend = self._get_trend_from_timeframe(self.high_timeframe2, middle_minim_energy_level)
             if anchor_trend == middle_trend:
                 result = anchor_trend
 
-        logger.info(f"_get_market_trend() -> result [{result}]")
+        logger.info(f"_get_market_trend({self.smart_trader.get_current_datetime()}) -> result [{result}]")
         return result
 
     def _is_ongoing(self):
@@ -144,24 +143,32 @@ class DivergentT1(IStrategy):
         return result
 
     def _open_orders(self, signal):
-        stop_loss_pips = 40
-        tsl_margin_pips = 40
+        take_profit = 0.0
+        stop_loss_pips = 20
+        tsl_margin_pips = 20
+        take_profit_pips = 20.0
         stop_loss_points = self.symbol_spec['pip_value'] * stop_loss_pips
+        take_profit_points = self.symbol_spec['pip_value'] * take_profit_pips
         tsl_margin_points = self.symbol_spec['pip_value'] * tsl_margin_pips
-        comment = f'tsl={tsl_margin_points}'
+        #comment = f'tsl={tsl_margin_points}'
+        comment = ''
         if signal == SignalType.BUY:
             price = self.smart_trader.dma.market_data[self.symbol]['ask']
             stop_loss = price - stop_loss_points
-            take_profit = 0.0
+            if take_profit_pips > 0.0:
+                take_profit = price + take_profit_points
             order_size = self.smart_trader.risk_management.get_new_order_size(self.id, self.symbol, price, stop_loss, self.smart_trader.get_current_datetime())
+            logger.info(f"_open_orders({self.smart_trader.get_current_datetime()}) -> BUY")
             self.smart_trader.dma.open_order(symbol=self.symbol, order_type='buy', lots=order_size, price=price,
                                              stop_loss=stop_loss, take_profit=take_profit, magic=self.magic_no,
                                              comment=comment)
         elif signal == SignalType.SELL:
             price = self.smart_trader.dma.market_data[self.symbol]['bid']
             stop_loss = price + stop_loss_points
-            take_profit = 0.0
+            if take_profit_pips > 0.0:
+                take_profit = price - take_profit_points
             order_size = self.smart_trader.risk_management.get_new_order_size(self.id, self.symbol, price, stop_loss, self.smart_trader.get_current_datetime())
+            logger.info(f"_open_orders({self.smart_trader.get_current_datetime()}) -> SELL")
             self.smart_trader.dma.open_order(symbol=self.symbol, order_type='sell', lots=order_size, price=price,
                                              stop_loss=stop_loss, take_profit=take_profit, magic=self.magic_no,
                                              comment=comment)

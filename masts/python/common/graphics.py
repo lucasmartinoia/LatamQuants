@@ -116,7 +116,6 @@ def graph_trading_results(bars_data_filename, symbol, time_frame, start_date, en
     # fplt.autoviewrestore()
     fplt.show()
 
-
 def graph_trades(trades_filename, symbol):
     if Path(trades_filename).exists():
         df = extract_dictionaries_from_file(trades_filename, symbol)

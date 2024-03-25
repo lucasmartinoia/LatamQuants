@@ -33,8 +33,8 @@ class RiskManagement:
     # Return risk current consumed percentage (rate) and amount in balance currency.
     def get_current_risk_consumed(self, current_balance, date_time):
         risk_consumed_amount = 0.0
-        for trade_data in self.dma.open_orders:
-            risk_consumed_amount = risk_consumed_amount + self.calculate_order_risk_amount(trade_data, date_time)
+        for trade_no in self.dma.open_orders:
+            risk_consumed_amount = risk_consumed_amount + self.calculate_order_risk_amount(self.dma.open_orders[trade_no], date_time)
         risk_consumed_perc = risk_consumed_amount / current_balance * 100.0
         return risk_consumed_perc, risk_consumed_amount
 
@@ -47,7 +47,7 @@ class RiskManagement:
         exchange_rate = get_exchange_rate(base_currency, quote_currency, date_time)
         logger.error(f"order base ccy: {base_currency}, balance ccy: {quote_currency}, exchange_rate: {exchange_rate}")
         # Calculate Risk Amount
-        order_risk_amount = abs(trade_data["open_price"]-trade_data["stop_loss"]) * trade_data["lots"] * contract_size
+        order_risk_amount = abs(trade_data["open_price"]-trade_data["SL"]) * trade_data["lots"] * contract_size
         logger.error(f"Ora in base ccy: {order_risk_amount}")
         order_risk_amount = order_risk_amount * exchange_rate
         logger.error(f"Ora in blance ccy: {order_risk_amount}")

@@ -462,8 +462,6 @@ class backtesting():
 
     def _execute_order(self, ticket_no, trade_data, symbol_tf=None, bar_data=None):
         result = False
-        if ticket_no == 34:
-            dummy = 1
         main_symbol_tf = self._get_main_tf(trade_data['symbol'])
         if symbol_tf is None:
             bar_data = self.dict_bardata[main_symbol_tf].iloc[self.dict_bardata_index[main_symbol_tf]]
@@ -501,20 +499,10 @@ class backtesting():
                                 bar_1m_index += 1
                         else:
                             bar_1m_index += 1
-
-                    if not result:
-                        logger.error(
-                            f'_execute_pending_order() -> Loop in M1 for {symbol_tf}, bar_data = {bar_data} continues with pending actions')
-                        raise Exception(
-                            f'_execute_pending_order() -> Loop in M1 for {symbol_tf} continues with pending actions')
-                        exit()
-
                 elif symbol_tf.endswith('M1'):
-                    # TODO: implement tick exploration, in the meantime give an error and interrupts the process.
-                    logger.error(
-                        f'_execute_pending_order() -> Tick data analysis required for {symbol_tf}, bar_data = {bar_data}')
-                    raise Exception('_execute_pending_order() -> Tick data analysis required for {symbol_tf}')
-                    exit()
+                    init_datetime = bar_data['DateTime']
+                    end_datetime = init_datetime + timedelta(minutes=1)
+                    self.execute_order_into_tick(ticket_no, trade_data, init_datetime, end_datetime)
                 else:
                     logger.error(f'_execute_pending_order() -> {symbol_tf} analysis not implemented')
                     raise Exception(f'_execute_pending_order() -> {symbol_tf} analysis not implemented')
@@ -530,6 +518,8 @@ class backtesting():
             result = 60
         elif tf == 'M30':
             result = 30
+        elif tf == 'M15':
+            result = 15
         elif tf == 'M5':
             result = 5
         elif tf == 'M1':
@@ -583,6 +573,56 @@ class backtesting():
             tick_data = self.get_tick_data_for_date_range(order_symbol, self.current_datetime)
             self._open_order(ticket_no, trade_data, tick_data['DateTime'].iloc[0], tick_data['Bid'].iloc[0],
                              tick_data['Ask'].iloc[0])
+
+    def execute_order_into_tick(self, ticket_no, trade_data, init_datetime, end_datetime):
+        order_symbol = trade_data['symbol']
+        order_type = trade_data['type']
+        for_buy = order_type.startswith('buy')
+        tick_data = self.get_tick_data_for_date_range(order_symbol, init_datetime, end_datetime)
+        if trade_data['status'] == OrderStatus.PENDING:
+            open_datetime, open_price = self.get_time_price_tick_data_for_price(tick_data, trade_data['price'], for_buy, for_buy)
+            self._open_order(ticket_no, trade_data, open_datetime, open_price, open_price)
+            trade_data = self.open_orders[ticket_no]
+            tick_data = tick_data[tick_data['DateTime'] > open_datetime]
+
+        # Manage order on tick.
+        if trade_data is not None and trade_data['status'] == OrderStatus.OPEN:
+            look_for_price = 0.0
+            if for_buy:
+                sl_close_price, sl_close_datetime = self.get_time_price_tick_data_for_price(tick_data, trade_data['SL'], False, False)
+                tp_close_price, tp_close_datetime = self.get_time_price_tick_data_for_price(tick_data, trade_data['TP'], False, True)
+            else:
+                sl_close_price, sl_close_datetime = self.get_time_price_tick_data_for_price(tick_data, trade_data['SL'], True, True)
+                tp_close_price, tp_close_datetime = self.get_time_price_tick_data_for_price(tick_data, trade_data['TP'], True, False)
+
+            if sl_close_price is not None and tp_close_price is not None:
+                #TODO: verify the following line, try to get the datetime stamp maybe using .iloc(0)
+                if sl_close_datetime <= tp_close_datetime:
+                    self._close_order(ticket_no, sl_close_price)
+                else:
+                    self._close_order(ticket_no, tp_close_price)
+            elif sl_close_price is not None:
+                self._close_order(ticket_no, sl_close_price)
+            elif tp_close_price is not None:
+                self._close_order(ticket_no, tp_close_price)
+
+    def get_time_price_tick_data_for_price(self, tick_data, price, price_ask, higher_than):
+        # Returns the market price ask/bid which is higher/lower than price received by paramater.
+        if price_ask:
+            price_type = 'Ask'
+        else:
+            price_type = 'Bid'
+        if higher_than:
+            price_tick_condition = tick_data[price_type] >= price
+        else:
+            price_tick_condition = tick_data[price_type] <= price
+        price_tick = tick_data[price_tick_condition]
+        if price_tick is not None and len(price_tick) > 0:
+            tick_datetime = price_tick['DateTime'].head(1)
+            tick_datetime = tick_datetime.reset_index(drop=True).iloc[0]
+            tick_price = price_tick[price_type].head(1)
+            tick_price = tick_price.reset_index(drop=True).iloc[0]
+        return tick_price, tick_datetime
 
     def _open_order(self, ticket_no, trade_data, execution_datetime, market_bid_price, market_ask_price):
         order_type = trade_data.get('type')
