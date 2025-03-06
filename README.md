@@ -1,5 +1,5 @@
 # LatamQuants
-Python platform to facilitate backtesting and realtime trading strategy execution.
+A Python platform designed to facilitate backtesting and real-time trading strategy execution.
 
 ## Requiriments
 ```
