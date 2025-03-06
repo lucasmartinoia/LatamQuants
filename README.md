@@ -1,5 +1,5 @@
 # LatamQuants
-Bricks of the Financial Freedom
+Python platform to facilitate backtesting and realtime trading strategy execution.
 
 ## Requiriments
 ```
